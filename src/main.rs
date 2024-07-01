@@ -14,8 +14,8 @@ struct Keys {
 #[derive(Clone)]
 struct KeySequence {
     sequence: Vec<Keys>,
-    step: u8,
-    length: u8,
+    step: u16,
+    length: u16,
 }
 
 fn main() {
@@ -23,13 +23,20 @@ fn main() {
     let mut window: PistonWindow = WindowSettings::new("Piston Window Example", [640, 480]).exit_on_esc(true).build().expect("YOU BAD AT CODE");
 
     let mut last_update = Instant::now();
-    let update_interval = Duration::from_secs(1); // Update every second
+    let update_interval = Duration::from_secs_f64(0.01); // Update every second
 
     let mut pressed_keys = Keys {a: false, s: false, d: false, w:false, special: false, ability: false};
 
     let mut this_vehicle = 1;
 
     let mut key_sequence = KeySequence {sequence: vec![], step: 0, length: 0};
+
+    let grass = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/tiles/diving-2328703_1920 2.jpg",
+        Flip::None,
+        &TextureSettings::new(),
+    ).unwrap();
 
     while let Some(event) = window.next() {
         if let Some(_) = event.update_args() {
@@ -47,6 +54,7 @@ fn main() {
             }
         }
 
+        
         if let Some(Button::Keyboard(key)) = event.press_args() {
             match key {
                 Key::A => {
@@ -98,7 +106,7 @@ fn main() {
                 _ => {}
             }
         }
-
+        
 
         // Draw the window's contents
         window.draw_2d(&event, |c, g, _| {
