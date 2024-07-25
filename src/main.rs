@@ -52,6 +52,11 @@ fn main() {
                     if check_death() {
                         end_run()
                     }
+                } else {
+                    buttons = check_buttons()
+                    for button in buttons {
+                        do_button(button)
+                    }
                 }
                 if in_run {
                     key_sequence.sequence.push(pressed_keys.clone());
