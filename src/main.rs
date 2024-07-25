@@ -44,6 +44,16 @@ fn main() {
             if now.duration_since(last_update) >= update_interval {
                 last_update = now;
                 if in_run {
+                    update_player()
+                    update_clones()
+                    update_bullets()
+                    update_enemies()
+                    check_deaths()
+                    if check_death() {
+                        end_run()
+                    }
+                }
+                if in_run {
                     key_sequence.sequence.push(pressed_keys.clone());
                     key_sequence.length += 1
                 } else {
