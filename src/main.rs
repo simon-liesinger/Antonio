@@ -18,6 +18,53 @@ struct KeySequence {
     length: u16,
 }
 
+fn update_players(state: Game) {
+    for clone in state.clones {
+        clone = update_clone(clone.clone())
+    }
+    state.player = update_player(state.player)
+
+    state
+}
+
+fn update_bullets(state: Game) {
+    for bullet in state.enemy_bullets {
+        bullet = update_bullet(bullet.clone())
+    }
+
+    for bullet in state.player_bullets {
+        bullet = update_bullet(bullet.clone())
+    }
+
+    state
+}
+
+fn check_hits(state: Game) {
+    state
+}
+
+fn check_deaths(state: Game) {
+    for clone in state.clones {
+        if check_death(clone.clone()) {
+            state = kill(clone.ID, state.clone())
+        }
+    }
+
+    state
+}
+
+fn check_death(agent: Player) {
+    agent.health == 0
+}
+
+fn end_run(state: Game) {
+    state.in_run = false
+
+    state = make_clone(state.player.clone())
+
+    state
+}
+
 fn main() {
     let mut in_run = true;
     let mut window: PistonWindow = WindowSettings::new("Piston Window Example", [640, 480]).exit_on_esc(true).build().expect("YOU BAD AT CODE");
@@ -43,14 +90,16 @@ fn main() {
             let now = Instant::now();
             if now.duration_since(last_update) >= update_interval {
                 last_update = now;
-                if in_run {
-                    update_player()
-                    update_clones()
-                    update_bullets()
-                    update_enemies()
-                    check_deaths()
-                    if check_death() {
-                        end_run()
+                if game.in_run {
+                    //game = update_camera(check_deaths(check_hits(update_enemies(update_bullets(update_players(game.clone()))))))
+                    game = update_players(game.clone())
+                    game = update_bullets(game.clone())
+                    game = update_enemies(game.clone())
+                    game = check_hits(game.clone())
+                    game = check_deaths(game.clone())
+                    game = update_camera(game.clone())
+                    if check_death(game.player.clone()) {
+                        game = end_run(game.clone())
                     }
                 } else {
                     buttons = check_buttons()
