@@ -18,33 +18,58 @@ struct KeySequence {
     length: u16,
 }
 
-fn update_players(state: Game) {
-    for clone in state.clones {
-        clone = update_clone(clone.clone())
-    }
-    state.player = update_player(state.player)
+fn update_clone(agent_ID: u32, state: Game) -> Game {
+    state = state.clones.get(agent_ID).move(agent_ID, state.clone())
 
     state
 }
 
-fn update_bullets(state: Game) {
-    for bullet in state.enemy_bullets {
-        bullet = update_bullet(bullet.clone())
+fn update_player(state: Game) -> Game {
+    state.player = add_inputs(get_inputs, state.player.clone())
+    state = state.player.move(state.clone())
+
+    state
+}
+
+fn update_player_bullet(bullet_ID: u32, state: Game) -> Game {
+    state = state.player_bullets.get(bullet_ID).update(bullet_ID, state.clone())
+
+    state
+}
+
+fn update_enemy_bullet(bullet_ID: u32, state: Game) -> Game {
+    state = state.enemy_bullets.get(bullet_ID).update(bullet_ID, state.clone())
+
+    state
+}
+
+fn update_players(state: Game) -> Game {
+    for clone in state.clones.get_all() {
+        state = update_clone(clone.clone(), state.clone())
+    }
+    state.player = update_player(state.clone())
+
+    state
+}
+
+fn update_bullets(state: Game) -> Game {
+    for bullet in state.enemy_bullets.get_all() {
+        state = update_enemy_bullet(bullet.ID.clone(), state.clone())
     }
 
-    for bullet in state.player_bullets {
-        bullet = update_bullet(bullet.clone())
+    for bullet in state.player_bullets.get_all() {
+        state = update_player_bullet(bullet.ID.clone(), state.clone())
     }
 
     state
 }
 
-fn check_hits(state: Game) {
+fn check_hits(state: Game) -> Game {
     state
 }
 
-fn check_deaths(state: Game) {
-    for clone in state.clones {
+fn check_deaths(state: Game) -> Game {
+    for clone in state.clones.get_all() {
         if check_death(clone.clone()) {
             state = kill(clone.ID, state.clone())
         }
@@ -53,16 +78,20 @@ fn check_deaths(state: Game) {
     state
 }
 
-fn check_death(agent: Player) {
+fn check_death(agent: Player) -> bool {
     agent.health == 0
 }
 
-fn end_run(state: Game) {
+fn end_run(state: Game) -> Game {
     state.in_run = false
 
     state = make_clone(state.player.clone())
 
     state
+}
+
+fn do_button(button: Button, state: Game) -> Game {
+
 }
 
 fn main() {
@@ -104,7 +133,7 @@ fn main() {
                 } else {
                     buttons = check_buttons()
                     for button in buttons {
-                        do_button(button)
+                        game = do_button(button, game.clone())
                     }
                 }
                 if in_run {
