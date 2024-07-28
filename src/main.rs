@@ -18,47 +18,60 @@ struct KeySequence {
     length: u16,
 }
 
+#[derive(Clone)]
+struct Game {
+
+}
+
+struct Action {
+
+}
+
+struct Player {
+
+}
+
 fn update_clone(agent_ID: u32, state: Game) -> Game {
-    state = state.clones.get(agent_ID).move(agent_ID, state.clone())
+    state = state.clones.get(agent_ID).move(agent_ID, state.clone());
 
     state
 }
 
 fn update_player(state: Game) -> Game {
-    state.player = add_inputs(get_inputs, state.player.clone())
-    state = state.player.move(state.clone())
+    state.player = add_inputs(get_inputs(), state.player.clone());
+    state = state.player.apply_inputs(state.clone());
 
     state
 }
 
 fn update_player_bullet(bullet_ID: u32, state: Game) -> Game {
-    state = state.player_bullets.get(bullet_ID).update(bullet_ID, state.clone())
+    state = state.player_bullets.get(bullet_ID).update(bullet_ID, state.clone());
 
     state
 }
 
 fn update_enemy_bullet(bullet_ID: u32, state: Game) -> Game {
-    state = state.enemy_bullets.get(bullet_ID).update(bullet_ID, state.clone())
+    state = state.enemy_bullets.get(bullet_ID).update(bullet_ID, state.clone());
 
     state
 }
 
 fn update_players(state: Game) -> Game {
     for clone in state.clones.get_all() {
-        state = update_clone(clone.clone(), state.clone())
+        state = update_clone(clone.clone(), state.clone());
     }
-    state.player = update_player(state.clone())
+    state.player = update_player(state.clone());
 
     state
 }
 
 fn update_bullets(state: Game) -> Game {
     for bullet in state.enemy_bullets.get_all() {
-        state = update_enemy_bullet(bullet.ID.clone(), state.clone())
+        state = update_enemy_bullet(bullet.ID.clone(), state.clone());
     }
 
     for bullet in state.player_bullets.get_all() {
-        state = update_player_bullet(bullet.ID.clone(), state.clone())
+        state = update_player_bullet(bullet.ID.clone(), state.clone());
     }
 
     state
@@ -71,7 +84,7 @@ fn check_hits(state: Game) -> Game {
 fn check_deaths(state: Game) -> Game {
     for clone in state.clones.get_all() {
         if check_death(clone.clone()) {
-            state = kill(clone.ID, state.clone())
+            state = kill(clone.ID, state.clone());
         }
     }
 
@@ -83,18 +96,49 @@ fn check_death(agent: Player) -> bool {
 }
 
 fn end_run(state: Game) -> Game {
-    state.in_run = false
+    state.in_run = false;
 
-    state = make_clone(state.player.clone())
+    state = make_clone(state.player.clone());
 
     state
 }
 
-fn do_button(button: Button, state: Game) -> Game {
+fn do_button(button: Action, state: Game) -> Game {
+    state
+}
 
+fn kill(clone_ID: u32, state: Game) -> Game {
+    state.clones.remove(clone_ID);
+
+    state
+}
+
+fn check_buttons() -> Vec {
+    []
+}
+
+fn add_inputs(inputs: Keys, player: Player) -> Player {
+    player
+}
+
+fn get_inputs() -> Keys {
+    pressed_keys
+}
+
+fn update_camera(state: Game) -> Game {
+    for &mut clone in state.clones.get_all() {
+        
+    }
 }
 
 fn main() {
+
+
+
+    let mut game = Game {};
+
+
+
     let mut in_run = true;
     let mut window: PistonWindow = WindowSettings::new("Piston Window Example", [640, 480]).exit_on_esc(true).build().expect("YOU BAD AT CODE");
 
@@ -120,20 +164,20 @@ fn main() {
             if now.duration_since(last_update) >= update_interval {
                 last_update = now;
                 if game.in_run {
-                    //game = update_camera(check_deaths(check_hits(update_enemies(update_bullets(update_players(game.clone()))))))
-                    game = update_players(game.clone())
-                    game = update_bullets(game.clone())
-                    game = update_enemies(game.clone())
-                    game = check_hits(game.clone())
-                    game = check_deaths(game.clone())
-                    game = update_camera(game.clone())
+                    //game = update_camera(check_deaths(check_hits(update_enemies(update_bullets(update_players(game.clone()))))));
+                    game = update_players(game.clone());
+                    game = update_bullets(game.clone());
+                    game = update_enemies(game.clone());
+                    game = check_hits(game.clone());
+                    game = check_deaths(game.clone());
+                    game = update_camera(game.clone());
                     if check_death(game.player.clone()) {
-                        game = end_run(game.clone())
+                        game = end_run(game.clone());
                     }
                 } else {
-                    buttons = check_buttons()
+                    let buttons = check_buttons();
                     for button in buttons {
-                        game = do_button(button, game.clone())
+                        game = do_button(button, game.clone());
                     }
                 }
                 if in_run {
