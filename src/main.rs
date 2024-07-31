@@ -20,15 +20,69 @@ struct KeySequence {
 
 #[derive(Clone)]
 struct Game {
-
+    player: Player,
+    clones: Player_list,
+    player_bullets: Vec<Bullet>,
+    enemy_bullets: Vec<Bullet>,
+    enemies: Vec<Enemy>,
+    in_run: bool,
 }
 
 struct Action {
-
+    type: String,
 }
 
+#[derive(Clone)]
 struct Player {
+    ID: String,
+    x: f64,
+    y: f64,
+    health: u32,
+    speed: f64,
+    jump: f64,
+    dataBool: vec<bool>,
+    dataString: vec<String>,
+    dataNum: vec<f64>,
+    moves: KeySequence,
+    apply_inputs: Box<dyn Fn(Game) -> Game>,
+    reset: Box<dyn Fn(Player) -> Player>,
+}
 
+#[derive(Clone)]
+struct Bullet {
+    x: f64,
+    y: f64,
+    speed: f64,
+    direction: f64,
+    damage: u32,
+    dataBool: vec<bool>,
+    dataString: vec<String>,
+    dataNum: vec<f64>,
+    update: Box<dyn Fn(u32, Game) -> Game>,
+}
+
+#[derive(Clone)]
+struct Enemy {
+    x: f64,
+    y: f64,
+    health: u32,
+    speed: f64,
+    dataBool: vec<bool>,
+    dataString: vec<String>,
+    dataNum: vec<f64>,
+    update: Box<dyn Fn(u32, Game) -> Game>,
+}
+
+#[derive(Clone)]
+struct Player_list {
+    players: Vec<Player>,
+    add: Box<dyn Fn(Player)>,
+}
+
+#[derive(Clone)]
+struct Bullet_list {
+    bullets: Vec<Bullet>,
+    add: Box<dyn Fn(Bullet)>,
 }
 
 fn update_clone(agent_ID: u32, state: Game) -> Game {
@@ -127,15 +181,89 @@ fn get_inputs() -> Keys {
 
 fn update_camera(state: Game) -> Game {
     for &mut clone in state.clones.get_all() {
-        
+        clone.x -= 1
     }
+    for &mut bullet in state.player_bullets.get_all() {
+        clone.x -= 1
+    }
+    for &mut bullet in state.enemy_bullets.get_all() {
+        clone.x -= 1
+    }
+    for &mut enemy in state.enemies.get_all() {
+        clone.x -= 1
+    }
+
+    state
+}
+
+fn update_enemies(state: Game) -> Game {
+    for enemy_ID in state.enemies.get_IDs() {
+        state = state.enemies.get(enemy_ID).update(enemy_ID, state)
+    }
+
+    state
+}
+
+fn make_clone(agent: Player, state: Game) -> Game {
+    let mut new_clone = agent.clone();
+    new_clone = (new_clone.reset)(new_clone.clone());
+
+    (state.clones.add)(new_clone);
+
+    state
 }
 
 fn main() {
 
 
 
-    let mut game = Game {};
+    let mut game = Game {
+        player: Player {
+            ID: "Base".to_string(),
+            x: 0.0,
+            y: 0.0,
+            health: 100,
+            speed: 1.0,
+            jump: 1.0,
+            dataBool: vec![],
+            dataString: vec![],
+            dataNum: vec![],
+            moves: KeySequence {sequence: vec![], step: 0, length: 0},
+            apply_inputs: fn |state: Game| -> Game {
+                state.player.x += state.player.speed * (state.player.moves.sequence[state.player.moves.step as usize].d as f64 - state.player.moves.sequence[state.player.moves.step as usize].a as f64);
+                state.player.y += state.player.speed * (state.player.moves.sequence[state.player.moves.step as usize].s as f64 - state.player.moves.sequence[state.player.moves.step as usize].w as f64);
+                state.player
+            },
+            reset: fn |player: Player| -> Player {
+                player.x = 0.0;
+                player.y = 0.0;
+                player.health = 100;
+                dataBool: vec![],
+                dataString: vec![],
+                dataNum: vec![],
+                player
+            },
+        },
+        clones: Player_list {
+            players: vec![],
+            add: fn |agent: Player| {
+                new = true;
+                for player in &mut players {
+                    if agent.ID == player.ID {
+                        player = agent;
+                        new = false
+                    }
+                }
+                if new {
+                    players.push(player);
+                }
+            },
+        },
+        player_bullets: vec![],
+        enemy_bullets: vec![],
+        enemies: vec![],
+        in_run: true,
+    };
 
 
 
