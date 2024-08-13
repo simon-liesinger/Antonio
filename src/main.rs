@@ -42,6 +42,8 @@ struct Player {
     id: String, //what vehicle the player is using
     x: f64, //position of the player
     y: f64, //position of the player
+    width: f64, //the size of the player
+    height: f64, //the size of the player
     health: u32, //how much health the player has
     speed: f64, //how fast the player can move
     jump: f64, //how high the player can jump
@@ -49,8 +51,8 @@ struct Player {
     data_string: Vec<String>, //data used by the player's update function
     data_num: Vec<f64>, //data used by the player's update function
     moves: KeySequence, //sequence of moves the player has made
-    apply_inputs: Rc<dyn Fn(Game) -> Game>, //move the player based on the inputs
-    reset: Rc<dyn Fn(Player) -> Player>, //reset the player to the starting state
+    apply_inputs: Rc<dyn Fn(&mut Game)>, //move the player based on the inputs
+    reset: Rc<dyn Fn(&mut Player)>, //reset the player to the starting state
     active: bool, //if the player is currently in the game
     image: u32, //the image of the player
 }
@@ -65,7 +67,7 @@ struct Bullet {
     data_bool: Vec<bool>, //data used by the bullet's update function
     data_string: Vec<String>, //data used by the bullet's update function
     data_num: Vec<f64>, //data used by the bullet's update function
-    update: Rc<dyn Fn(u32, Game) -> Game>, //update the bullet based on the game state
+    update: Rc<dyn Fn(u32, &mut Game)>, //update the bullet based on the game state
     id: u32, //the id of the bullet
     image: u32, //the image of the bullet
 }
@@ -79,7 +81,7 @@ struct Enemy {
     data_bool: Vec<bool>, //data used by the enemy's update function
     data_string: Vec<String>, //data used by the enemy's update function
     data_num: Vec<f64>, //data used by the enemy's update function
-    update: Rc<dyn Fn(u32, Game) -> Game>, //update the enemy based on the game state
+    update: Rc<dyn Fn(u32, &mut Game)>, //update the enemy based on the game state
     id: u32, //the id of the enemy
     image: u32, //the image of the enemy
 }
@@ -87,25 +89,25 @@ struct Enemy {
 #[derive(Clone)]
 struct PlayerList {
     players: Vec<Player>,
-    add: Rc<dyn Fn(Player, Game) -> Game>,
+    add: Rc<dyn Fn(Player, &mut Game)>,
     get: Rc<dyn Fn(String, Game) -> Player>,
-    remove: Rc<dyn Fn(String, Game) -> Game>,
+    remove: Rc<dyn Fn(String, &mut Game)>,
 }
 
 #[derive(Clone)]
 struct BulletList {
     bullets: Vec<Bullet>,
-    add: Rc<dyn Fn(Bullet, Game) -> Game>,
+    add: Rc<dyn Fn(Bullet, &mut Game)>,
     get: Rc<dyn Fn(u32, Game) -> Bullet>,
-    remove: Rc<dyn Fn(u32, Game) -> Game>,
+    remove: Rc<dyn Fn(u32, &mut Game)>,
 }
 
 #[derive(Clone)]
 struct EnemyList {
     enemies: Vec<Enemy>,
-    add: Rc<dyn Fn(Enemy, Game) -> Game>,
+    add: Rc<dyn Fn(Enemy, &mut Game)>,
     get: Rc<dyn Fn(u32, Game) -> Enemy>,
-    remove: Rc<dyn Fn(u32, Game) -> Game>,
+    remove: Rc<dyn Fn(u32, &mut Game)>,
     get_ids: Rc<dyn Fn(Game) -> Vec<u32>>,
 }
 
@@ -122,49 +124,39 @@ struct Platform {
 #[derive(Clone)]
 struct PlatformList {
     platforms: Vec<Platform>,
-    add: Rc<dyn Fn(Platform, Game) -> Game>,
+    add: Rc<dyn Fn(Platform, &mut Game)>,
     get: Rc<dyn Fn(u32, Game) -> Platform>,
-    remove: Rc<dyn Fn(u32, Game) -> Game>,
+    remove: Rc<dyn Fn(u32, &mut Game)>,
 }
 
 
 
-fn update_clone(agent_id: String, mut state: Game) -> Game {
+fn update_clone(agent_id: String, state: &mut Game) {
     state = ((state.clones.get)(agent_id, state.clone()).apply_inputs)(state.clone());
-
-    state
 }
 
-fn update_player(mut state: Game) -> Game {
+fn update_player(state: &mut Game) {
     state.player = add_inputs(get_inputs(state.clone()), state.player.clone());
     state = (state.player.apply_inputs)(state.clone());
-
-    state
 }
 
-fn update_player_bullet(bullet_id: u32, mut state: Game) -> Game {
+fn update_player_bullet(bullet_id: u32, state: &mut Game) {
     state = ((state.player_bullets.get)(bullet_id, state.clone()).update)(bullet_id, state.clone());
-
-    state
 }
 
-fn update_enemy_bullet(bullet_id: u32, mut state: Game) -> Game {
+fn update_enemy_bullet(bullet_id: u32, state: &mut Game) {
     state = ((state.enemy_bullets.get)(bullet_id, state.clone()).update)(bullet_id, state.clone());
-
-    state
 }
 
-fn update_players(mut state: Game) -> Game {
+fn update_players(state: &mut Game) {
     for clone in state.clones.players.clone() {
         state = update_clone(clone.id.clone(), state.clone());
     }
 
     state = update_player(state.clone());
-
-    state
 }
 
-fn update_bullets(mut state: Game) -> Game {
+fn update_bullets(state: &mut Game) {
     for bullet in state.enemy_bullets.bullets.clone() {
         state = update_enemy_bullet(bullet.id.clone(), state.clone());
     }
@@ -172,29 +164,44 @@ fn update_bullets(mut state: Game) -> Game {
     for bullet in state.player_bullets.bullets.clone() {
         state = update_player_bullet(bullet.id.clone(), state.clone());
     }
-
-    state
 }
 
-fn check_hits(mut state: Game) -> Game {
-    state
+fn check_hits(state: &mut Game) {
+    for bullet in state.enemy_bullets.bullets.clone() {
+        if bullet.x + 0.1 > state.player.x - state.player.width/2.0 && bullet.x - 0.1 < state.player.x + state.player.width/2.0 && bullet.y + 0.1 > state.player.y - state.player.height/2.0 && bullet.y - 0.1 < state.player.y + state.player.height/2.0 {
+            state.player.health -= bullet.damage;
+            state = (state.enemy_bullets.remove)(bullet.id, &mut state);
+        }
+    }
+
+    for bullet in state.player_bullets.bullets.clone() {
+        for enemy in state.enemies.enemies.clone() {
+            if bullet.x + 0.1 > enemy.x - 0.1 && bullet.x - 0.1 < enemy.x + 0.1 && bullet.y + 0.1 > enemy.y - 0.1 && bullet.y - 0.1 < enemy.y + 0.1 {
+                enemy.health -= bullet.damage;
+                (state.player_bullets.remove)(bullet.id, &mut state);
+            }
+        }
+    }
 }
 
-fn check_deaths(mut state: Game) -> Game {
+fn check_deaths(state: &mut Game) {
     for clone in state.clones.players.clone() {
         if check_death(clone.clone()) {
             state = kill(clone.id.clone(), state.clone());
         }
     }
-
-    state
+    for enemy in state.enemies.enemies.clone() {
+        if enemy.health == 0 {
+            state = (state.enemies.remove)(enemy.id, state.clone());
+        }
+    }
 }
 
 fn check_death(agent: Player) -> bool {
     agent.health == 0
 }
 
-fn end_run(mut state: Game) -> Game {
+fn end_run(state: &mut Game) {
     state.in_run = false;
 
     state = make_clone(state.player.clone(), state.clone());
@@ -202,33 +209,28 @@ fn end_run(mut state: Game) -> Game {
     for clone in state.clones.players.clone() {
         state = kill(clone.id, state.clone());
     }
-
-    state
 }
 
-fn do_button(button: Action, state: Game) -> Game {
-    state
+fn do_button(button: Action, state: &mut Game) {
 }
 
-fn kill(clone_id: String, mut state: Game) -> Game {
+fn kill(clone_id: String, state: &mut Game) {
     state = (state.clones.remove)(clone_id, state.clone());
-
-    state
 }
 
 fn check_buttons() -> Vec<Action> {
     vec![]
 }
 
-fn add_inputs(inputs: Keys, player: Player) -> Player {
-    player
+fn add_inputs(inputs: Keys, player: &mut Player) {
+    player.moves.sequence.push(inputs);
 }
 
-fn get_inputs(state: Game) -> Keys {
+fn get_inputs(state: &Game) -> Keys {
     state.pressed_keys
 }
 
-fn update_camera(mut state: Game) -> Game {
+fn update_camera(state: &mut Game) {
     for clone in state.clones.players.iter_mut() {
         clone.x -= 1.0
     }
@@ -241,45 +243,39 @@ fn update_camera(mut state: Game) -> Game {
     for enemy in state.enemies.enemies.iter_mut() {
         enemy.x -= 1.0
     }
-
-    state
 }
 
-fn update_enemies(mut state: Game) -> Game {
+fn update_enemies(state: &mut Game) {
     for enemy_id in (state.enemies.get_ids)(state.clone()) {
         state = ((state.enemies.get)(enemy_id, state.clone()).update)(enemy_id, state)
     }
-
-    state
 }
 
-fn make_clone(agent: Player, mut state: Game) -> Game {
+fn make_clone(agent: Player, state: &mut Game) {
     let mut new_clone = agent.clone();
     new_clone = (new_clone.reset)(new_clone.clone());
 
     state = (state.clones.add)(new_clone, state.clone());
-
-    state
 }
 
-fn update_platforms(mut state: Game) -> Game {
+fn update_platforms(state: &mut Game) {
     for platform in state.platforms.platforms.clone() {
         if platform.x + platform.width/2.0 < 0.0 {
             state = (state.platforms.remove)(platform.id, state.clone());
         }
     }
+    //find all used IDs
     let mut usedIDs = vec![];
     for platform in state.platforms.platforms.clone() {
         usedIDs.push(platform.id);
     }
+    //use a new ID
     let mut newID = 0;
     while usedIDs.contains(&newID) {
         newID += 1;
     }
     //add a new platform with a random image
     state = (state.platforms.add)(Platform {x: 0.0, y: 0.0, width: 100.0, height: 10.0, id: newID, image: 1}, state.clone());
-
-    state
 }
 
 fn main() {
@@ -291,6 +287,8 @@ fn main() {
             id: "Base".to_string(),
             x: 0.0,
             y: 0.0,
+            width: 10.0,
+            height: 10.0,
             health: 100,
             speed: 1.0,
             jump: 1.0,
@@ -298,36 +296,97 @@ fn main() {
             data_string: vec![],
             data_num: vec![],
             moves: KeySequence {sequence: vec![], step: 0, length: 0},
-            apply_inputs: Rc::new(|mut state: Game| -> Game {
-                if state.player.moves.sequence[state.player.moves.step as usize].w {
-                    state.player.y += state.player.speed;
+            apply_inputs: Rc::new(|state: &mut Game| {
+                if state.player.moves[state.player.moves.step].a {
+                    state.player.data_num[0] -= state.player.speed;
                 }
-                if state.player.moves.sequence[state.player.moves.step as usize].a {
-                    state.player.x -= state.player.speed;
+                if state.player.moves[state.player.moves.step].s {
+                    state.player.data_num[1] = min(state.player.data_num[1], 0.0);
                 }
-                if state.player.moves.sequence[state.player.moves.step as usize].s {
-                    state.player.y -= state.player.speed;
+                if state.player.moves[state.player.moves.step].d {
+                    state.player.data_num[0] += state.player.speed;
                 }
-                if state.player.moves.sequence[state.player.moves.step as usize].d {
-                    state.player.x += state.player.speed;
+                if state.player.moves[state.player.moves.step].w {
+                    state.player.data_num[1] += state.player.jump;
                 }
-                state
+                if state.player.moves[state.player.moves.step].special {
+                    if not(state.player.data_bool[1]) {
+                        state.player.data_bool[1] = true;
+                        state.player.data_bool[0] = not(state.player.data_bool[0]);
+                    } else {
+                        state.player.data_bool[1] = false;
+                    }
+                }
+                //shooting
+                if state.player.data_bool[0] && state.player.data_num[2] == 0.0 {
+                    state.player.data_num[2] = 1.0;
+                    //find all used IDs
+                    let mut usedIDs = vec![];
+                    for bullet in state.player_bullets.bullets.clone() {
+                        usedIDs.push(bullet.id);
+                    }
+                    //use a new ID
+                    let mut newID = 0;
+                    while usedIDs.contains(&newID) {
+                        newID += 1;
+                    }
+                    //add a new bullet
+                    state = (state.player_bullets.add)(Bullet {x: state.player.x, y: state.player.y, speed: 10.0, direction: 0.0, damage: 1, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {
+                        state.player_bullets.bullets[0].x += 1.0;
+                    }), id: newID, image: 0}, state.clone());
+                }
+                //check for platform collisions
+                for platform in state.platforms.platforms.clone() {
+                    if state.player.x + state.player.width/2.0 > platform.x - platform.width/2.0 && state.player.x - state.player.width/2.0 < platform.x + platform.width/2.0 && state.player.y + state.player.height/2.0 > platform.y - platform.height/2.0 && state.player.y - state.player.height/2.0 < platform.y + platform.height/2.0 {
+                        //check if the player is above the platform
+                        if state.player.y - state.player.height/2.0 < platform.y + platform.height/2.0 {
+                            state.player.data_num[1] = max(state.player.data_num[1], 0.0);
+                        }
+                        //check if the player is below the platform
+                        if state.player.y + state.player.height/2.0 > platform.y - platform.height/2.0 {
+                            state.player.data_num[1] = min(state.player.data_num[1], 0.0);
+                        }
+                        //check if the player is to the left of the platform
+                        if state.player.x + state.player.width/2.0 > platform.x - platform.width/2.0 {
+                            state.player.data_num[0] = min(state.player.data_num[0], 0.0);
+                        }
+                        //check if the player is to the right of the platform
+                        if state.player.x - state.player.width/2.0 < platform.x + platform.width/2.0 {
+                            state.player.data_num[0] = max(state.player.data_num[0], 0.0);
+                        }
+                    }
+                }
+                //check for ground collisions
+                if state.player.y - state.player.height/2.0 < 0.0 {
+                    state.player.data_num[1] = max(state.player.data_num[1], 0.0);
+                }
+                //apply air resistance
+                state.player.data_num[0] *= 0.9;
+                state.player.data_num[1] *= 0.9;
+                //apply gravity
+                state.player.data_num[1] -= 0.1;
+                //apply bullet cooldown
+                if state.player.data_num[2] > 0.0 {
+                    state.player.data_num[2] -= 0.05;
+                }
+                //move the player
+                state.player.x += state.player.data_num[0];
+                state.player.y += state.player.data_num[1];
             }),
-            reset: Rc::new(|mut player: Player| -> Player {
+            reset: Rc::new(|player: &mut Player| {
                 player.x = 0.0;
                 player.y = 0.0;
                 player.health = 100;
                 player.data_bool = vec![];
                 player.data_string = vec![];
                 player.data_num = vec![];
-                player
             }),
             active: true,
             image: 0,
         },
         clones: PlayerList {
             players: vec![],
-            add: Rc::new(|agent: Player, mut state: Game| -> Game {
+            add: Rc::new(|agent: Player, state: &mut Game| {
                 let mut new = true;
                 for player in state.clones.players.iter_mut() {
                     if agent.id == player.id {
@@ -338,9 +397,8 @@ fn main() {
                 if new {
                     state.clones.players.push(agent);
                 }
-                state
             }),
-            get: Rc::new(|id: String, mut state: Game| -> Player {
+            get: Rc::new(|id: String, state: &mut Game| -> Player {
                 for player in state.clones.players.clone() {
                     if player.id == id {
                         return player;
@@ -348,18 +406,17 @@ fn main() {
                 }
                 state.clones.players[0].clone()
             }),
-            remove: Rc::new(|id: String, mut state: Game| -> Game {
+            remove: Rc::new(|id: String, state: &mut Game| {
                 for i in 0..state.clones.players.len() {
                     if state.clones.players[i].id == id {
                         state.clones.players.remove(i);
                     }
                 }
-                state
             }),
         },
         player_bullets: BulletList {
             bullets: vec![],
-            add: Rc::new(|agent: Bullet, mut state: Game| -> Game {
+            add: Rc::new(|agent: Bullet, state: &mut Game| {
                 let mut new = true;
                 for bullet in state.player_bullets.bullets.iter_mut() {
                     if agent.id == bullet.id {
@@ -370,9 +427,8 @@ fn main() {
                 if new {
                     state.player_bullets.bullets.push(agent);
                 }
-                state
             }),
-            get: Rc::new(|id: u32, state: Game| -> Bullet {
+            get: Rc::new(|id: u32, state: &Game| -> Bullet {
                 for bullet in state.player_bullets.bullets.clone() {
                     if bullet.id == id {
                         return bullet;
@@ -380,18 +436,17 @@ fn main() {
                 }
                 state.player_bullets.bullets[0].clone()
             }),
-            remove: Rc::new(|id: u32, mut state: Game| -> Game {
+            remove: Rc::new(|id: u32, state: &mut Game| {
                 for i in 0..state.player_bullets.bullets.len() {
                     if state.player_bullets.bullets[i].id == id {
                         state.player_bullets.bullets.remove(i);
                     }
                 }
-                state
             }),
         },
         enemy_bullets: BulletList {
             bullets: vec![],
-            add: Rc::new(|agent: Bullet, mut state: Game| -> Game {
+            add: Rc::new(|agent: Bullet, state: &mut Game| {
                 let mut new = true;
                 for bullet in state.enemy_bullets.bullets.iter_mut() {
                     if agent.id == bullet.id {
@@ -403,9 +458,8 @@ fn main() {
                 if new {
                     state.enemy_bullets.bullets.push(agent);
                 }
-                state
             }),
-            get: Rc::new(|id: u32, state: Game| -> Bullet {
+            get: Rc::new(|id: u32, state: &Game| -> Bullet {
                 for bullet in state.enemy_bullets.bullets.clone() {
                     if bullet.id == id {
                         return bullet;
@@ -413,18 +467,17 @@ fn main() {
                 }
                 state.enemy_bullets.bullets[0].clone()
             }),
-            remove: Rc::new(|id: u32, mut state: Game| -> Game {
+            remove: Rc::new(|id: u32, state: &mut Game| {
                 for i in 0..state.enemy_bullets.bullets.len() {
                     if state.enemy_bullets.bullets[i].id == id {
                         state.enemy_bullets.bullets.remove(i);
                     }
                 }
-                state
             }),
         },
         enemies: EnemyList {
             enemies: vec![],
-            add: Rc::new(|agent: Enemy, mut state: Game| -> Game {
+            add: Rc::new(|agent: Enemy, state: &mut Game| {
                 let mut new = true;
                 for enemy in state.enemies.enemies.iter_mut() {
                     if agent.id == enemy.id {
@@ -436,9 +489,8 @@ fn main() {
                 if new {
                     state.enemies.enemies.push(agent);
                 }
-                state
             }),
-            get: Rc::new(|id: u32, state: Game| -> Enemy {
+            get: Rc::new(|id: u32, state: &Game| -> Enemy {
                 for enemy in state.enemies.enemies.clone() {
                     if enemy.id == id {
                         return enemy;
@@ -446,15 +498,14 @@ fn main() {
                 }
                 state.enemies.enemies[0].clone()
             }),
-            remove: Rc::new(|id: u32, mut state: Game| -> Game {
+            remove: Rc::new(|id: u32, state: &mut Game| {
                 for i in 0..state.enemies.enemies.len() {
                     if state.enemies.enemies[i].id == id {
                         state.enemies.enemies.remove(i);
                     }
                 }
-                state
             }),
-            get_ids: Rc::new(|state: Game| -> Vec<u32> {
+            get_ids: Rc::new(|state: &Game| -> Vec<u32> {
                 let mut ids = vec![];
                 for enemy in state.enemies.enemies {
                     ids.push(enemy.id);
@@ -469,7 +520,7 @@ fn main() {
         },
         platforms: PlatformList {
             platforms: vec![],
-            add: Rc::new(|agent: Platform, mut state: Game| -> Game {
+            add: Rc::new(|agent: Platform, state: &mut Game| {
                 let mut new = true;
                 for platform in state.platforms.platforms.iter_mut() {
                     if agent.id == platform.id {
@@ -481,9 +532,8 @@ fn main() {
                 if new {
                     state.platforms.platforms.push(agent);
                 }
-                state
             }),
-            get: Rc::new(|id: u32, state: Game| -> Platform {
+            get: Rc::new(|id: u32, state: &Game| -> Platform {
                 for platform in state.platforms.platforms.clone() {
                     if platform.id == id {
                         return platform;
@@ -491,13 +541,12 @@ fn main() {
                 }
                 state.platforms.platforms[0].clone()
             }),
-            remove: Rc::new(|id: u32, mut state: Game| -> Game {
+            remove: Rc::new(|id: u32, state: &mut Game| {
                 for i in 0..state.platforms.platforms.len() {
                     if state.platforms.platforms[i].id == id {
                         state.platforms.platforms.remove(i);
                     }
                 }
-                state
             }),
         },
     };
@@ -512,11 +561,11 @@ fn main() {
     game = (game.platforms.add)(Platform {x: 0.0, y: 0.0, width: 100.0, height: 10.0, id: 0, image: 0}, game.clone());
 
     //add a blank bullet to both lists
-    game = (game.player_bullets.add)(Bullet {x: 0.0, y: 0.0, speed: 0.0, direction: 0.0, damage: 0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, mut state: Game| -> Game {state}), id: 0, image: 0}, game.clone());
-    game = (game.enemy_bullets.add)(Bullet {x: 0.0, y: 0.0, speed: 0.0, direction: 0.0, damage: 0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, mut state: Game| -> Game {state}), id: 0, image: 0}, game.clone());
+    game = (game.player_bullets.add)(Bullet {x: 0.0, y: 0.0, speed: 0.0, direction: 0.0, damage: 0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {state}), id: 0, image: 0}, game.clone());
+    game = (game.enemy_bullets.add)(Bullet {x: 0.0, y: 0.0, speed: 0.0, direction: 0.0, damage: 0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {state}), id: 0, image: 0}, game.clone());
 
     //add a blank enemy to the list
-    game = (game.enemies.add)(Enemy {x: 0.0, y: 0.0, health: 0, speed: 0.0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, mut state: Game| -> Game {state}), id: 0, image: 0}, game.clone());
+    game = (game.enemies.add)(Enemy {x: 0.0, y: 0.0, health: 0, speed: 0.0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {state}), id: 0, image: 0}, game.clone());
 
     //update the player's image
     game.player.image = 1;
@@ -538,174 +587,168 @@ fn main() {
 
 
     //get the background image
-    let background = Texture::from_path(
+        let background = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/background.jpeg",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
 
 
     //make a list of the platform images
-    let platform1 = Texture::from_path(
+        let platform1 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/platform1.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let platform2 = Texture::from_path(
+        let platform2 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/platform2.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let platform3 = Texture::from_path(
+        let platform3 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/platform3.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let platform4 = Texture::from_path(
-        &mut window.create_texture_context(),
-        "assets/images/platform4.png",
-        Flip::None,
-        &TextureSettings::new(),
-    ).unwrap();
-
-    let platform_images = vec![platform1, platform2, platform3, platform4];
+        let platform_images = vec![platform1, platform2, platform3];
 
 
 
     //make a list of the player images
-    let player1 = Texture::from_path(
+        let player1 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/player1.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let player2 = Texture::from_path(
+        let player2 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/player2.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let player3 = Texture::from_path(
+        let player3 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/player3.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let player4 = Texture::from_path(
+        let player4 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/player4.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let player5 = Texture::from_path(
+        let player5 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/player5.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let player_images = vec![player1, player2, player3, player4, player5];
+        let player_images = vec![player1, player2, player3, player4, player5];
 
 
 
     //make a list of the enemy images
-    let enemy1 = Texture::from_path(
+        let enemy1 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/enemy1.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let enemy2 = Texture::from_path(
+        let enemy2 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/enemy2.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let enemy3 = Texture::from_path(
+        let enemy3 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/enemy3.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let enemy4 = Texture::from_path(
+        let enemy4 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/enemy4.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let enemy_images = vec![enemy1, enemy2, enemy3, enemy4];
+        let enemy_images = vec![enemy1, enemy2, enemy3, enemy4];
 
 
 
     //make a list of the bullet images
-    let bullet1 = Texture::from_path(
+        let bullet1 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/bullet1.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let bullet2 = Texture::from_path(
+        let bullet2 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/bullet2.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let bullet3 = Texture::from_path(
+        let bullet3 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/bullet3.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let bullet4 = Texture::from_path(
+        let bullet4 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/bullet4.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
-    let bullet_images = vec![bullet1, bullet2, bullet3, bullet4];
+        let bullet_images = vec![bullet1, bullet2, bullet3, bullet4];
 
 
 
     //get the menu image
-    let menu = Texture::from_path(
+        let menu = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/menu.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
 
 
     //get the mouse image
-    let mouse = Texture::from_path(
+        let mouse = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/mouse.png",
         Flip::None,
         &TextureSettings::new(),
-    ).unwrap();
+        ).unwrap();
 
 
 
+    
     while let Some(event) = window.next() {
         if let Some(_) = event.update_args() {
             let now = Instant::now();
@@ -713,15 +756,15 @@ fn main() {
                 last_update = now;
                 if game.in_run {
                     //game = build_platforms(update_camera(check_deaths(check_hits(update_enemies(update_bullets(update_players(game.clone())))))));
-                    game = update_players(game.clone());
-                    game = update_bullets(game.clone());
-                    game = update_enemies(game.clone());
-                    game = check_hits(game.clone());
-                    game = check_deaths(game.clone());
-                    game = update_camera(game.clone());
-                    game = update_platforms(game.clone());
-                    if check_death(game.player.clone()) {
-                        game = end_run(game.clone());
+                    update_players(&mut game);
+                    update_bullets(&mut game);
+                    update_enemies(&mut game);
+                    check_hits(&mut game);
+                    check_deaths(&mut game);
+                    update_camera(&mut game);
+                    update_platforms(&mut game);
+                    if check_death(game.player) {
+                        end_run(&mut game);
                     }
                 } else {
                     let mut buttons = check_buttons();
