@@ -132,37 +132,37 @@ struct PlatformList {
 
 
 fn update_clone(agent_id: String, state: &mut Game) {
-    state = ((state.clones.get)(agent_id, state.clone()).apply_inputs)(state.clone());
+    ((state.clones.get)(agent_id, &mut state).apply_inputs)(&mut state);
 }
 
 fn update_player(state: &mut Game) {
-    state.player = add_inputs(get_inputs(state.clone()), state.player.clone());
-    state = (state.player.apply_inputs)(state.clone());
+    state.player = add_inputs(get_inputs(&mut state), &mut state.player);
+    (state.player.apply_inputs)(&mut state);
 }
 
 fn update_player_bullet(bullet_id: u32, state: &mut Game) {
-    state = ((state.player_bullets.get)(bullet_id, state.clone()).update)(bullet_id, state.clone());
+    ((state.player_bullets.get)(bullet_id, &mut state).update)(bullet_id, &mut state);
 }
 
 fn update_enemy_bullet(bullet_id: u32, state: &mut Game) {
-    state = ((state.enemy_bullets.get)(bullet_id, state.clone()).update)(bullet_id, state.clone());
+    ((state.enemy_bullets.get)(bullet_id, &mut state).update)(bullet_id, &mut state);
 }
 
 fn update_players(state: &mut Game) {
     for clone in state.clones.players.clone() {
-        state = update_clone(clone.id.clone(), state.clone());
+        update_clone(&clone.id, &mut state);
     }
 
-    state = update_player(state.clone());
+    update_player(&mut state);
 }
 
 fn update_bullets(state: &mut Game) {
     for bullet in state.enemy_bullets.bullets.clone() {
-        state = update_enemy_bullet(bullet.id.clone(), state.clone());
+        update_enemy_bullet(&bullet.id, &mut state);
     }
 
     for bullet in state.player_bullets.bullets.clone() {
-        state = update_player_bullet(bullet.id.clone(), state.clone());
+        update_player_bullet(&bullet.id, &mut state);
     }
 }
 
@@ -170,7 +170,7 @@ fn check_hits(state: &mut Game) {
     for bullet in state.enemy_bullets.bullets.clone() {
         if bullet.x + 0.1 > state.player.x - state.player.width/2.0 && bullet.x - 0.1 < state.player.x + state.player.width/2.0 && bullet.y + 0.1 > state.player.y - state.player.height/2.0 && bullet.y - 0.1 < state.player.y + state.player.height/2.0 {
             state.player.health -= bullet.damage;
-            state = (state.enemy_bullets.remove)(bullet.id, &mut state);
+            (state.enemy_bullets.remove)(bullet.id, &mut state);
         }
     }
 
@@ -186,13 +186,13 @@ fn check_hits(state: &mut Game) {
 
 fn check_deaths(state: &mut Game) {
     for clone in state.clones.players.clone() {
-        if check_death(clone.clone()) {
-            state = kill(clone.id.clone(), state.clone());
+        if check_death(&clone) {
+            kill(&clone.id, &mut state);
         }
     }
     for enemy in state.enemies.enemies.clone() {
         if enemy.health == 0 {
-            state = (state.enemies.remove)(enemy.id, state.clone());
+            (state.enemies.remove)(enemy.id, &mut state);
         }
     }
 }
@@ -204,10 +204,10 @@ fn check_death(agent: Player) -> bool {
 fn end_run(state: &mut Game) {
     state.in_run = false;
 
-    state = make_clone(state.player.clone(), state.clone());
+    make_clone(state.player.clone(), &mut state);
 
     for clone in state.clones.players.clone() {
-        state = kill(clone.id, state.clone());
+        kill(clone.id, &mut state);
     }
 }
 
@@ -215,7 +215,7 @@ fn do_button(button: Action, state: &mut Game) {
 }
 
 fn kill(clone_id: String, state: &mut Game) {
-    state = (state.clones.remove)(clone_id, state.clone());
+    (state.clones.remove)(clone_id, &mut state);
 }
 
 fn check_buttons() -> Vec<Action> {
@@ -246,22 +246,21 @@ fn update_camera(state: &mut Game) {
 }
 
 fn update_enemies(state: &mut Game) {
-    for enemy_id in (state.enemies.get_ids)(state.clone()) {
-        state = ((state.enemies.get)(enemy_id, state.clone()).update)(enemy_id, state)
+    for enemy_id in (state.enemies.get_ids)(&mut state) {
+        ((state.enemies.get)(enemy_id, &mut state).update)(enemy_id, &mut state)
     }
 }
 
-fn make_clone(agent: Player, state: &mut Game) {
-    let mut new_clone = agent.clone();
-    new_clone = (new_clone.reset)(new_clone.clone());
+fn make_clone(agent: &mut Player, state: &mut Game) {
+    agent = (agent.reset)(&mut agent);
 
-    state = (state.clones.add)(new_clone, state.clone());
+    (state.clones.add)(new_clone, &mut state);
 }
 
 fn update_platforms(state: &mut Game) {
     for platform in state.platforms.platforms.clone() {
         if platform.x + platform.width/2.0 < 0.0 {
-            state = (state.platforms.remove)(platform.id, state.clone());
+            (state.platforms.remove)(platform.id, &mut state);
         }
     }
     //find all used IDs
@@ -275,7 +274,7 @@ fn update_platforms(state: &mut Game) {
         newID += 1;
     }
     //add a new platform with a random image
-    state = (state.platforms.add)(Platform {x: 0.0, y: 0.0, width: 100.0, height: 10.0, id: newID, image: 1}, state.clone());
+    (state.platforms.add)(Platform {x: 0.0, y: 0.0, width: 100.0, height: 10.0, id: newID, image: 1}, &mut state);
 }
 
 fn main() {
@@ -331,9 +330,9 @@ fn main() {
                         newID += 1;
                     }
                     //add a new bullet
-                    state = (state.player_bullets.add)(Bullet {x: state.player.x, y: state.player.y, speed: 10.0, direction: 0.0, damage: 1, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {
+                    (state.player_bullets.add)(Bullet {x: state.player.x, y: state.player.y, speed: 10.0, direction: 0.0, damage: 1, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {
                         state.player_bullets.bullets[0].x += 1.0;
-                    }), id: newID, image: 0}, state.clone());
+                    }), id: newID, image: 0}, &mut state);
                 }
                 //check for platform collisions
                 for platform in state.platforms.platforms.clone() {
@@ -555,17 +554,17 @@ fn main() {
     game.player.moves.sequence.push(Keys {a: false, s: false, d: false, w:false, special: false, ability: false});
 
     //add a blank player to the list
-    game = (game.clones.add)(game.player.clone(), game.clone());
+    (game.clones.add)(game.player.clone(), &mut game);
 
     //add a blank platform to the list
-    game = (game.platforms.add)(Platform {x: 0.0, y: 0.0, width: 100.0, height: 10.0, id: 0, image: 0}, game.clone());
+    (game.platforms.add)(Platform {x: 0.0, y: 0.0, width: 100.0, height: 10.0, id: 0, image: 0}, &mut game);
 
     //add a blank bullet to both lists
-    game = (game.player_bullets.add)(Bullet {x: 0.0, y: 0.0, speed: 0.0, direction: 0.0, damage: 0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {state}), id: 0, image: 0}, game.clone());
-    game = (game.enemy_bullets.add)(Bullet {x: 0.0, y: 0.0, speed: 0.0, direction: 0.0, damage: 0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {state}), id: 0, image: 0}, game.clone());
+    (game.player_bullets.add)(Bullet {x: 0.0, y: 0.0, speed: 0.0, direction: 0.0, damage: 0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {state}), id: 0, image: 0}, &mut game);
+    (game.enemy_bullets.add)(Bullet {x: 0.0, y: 0.0, speed: 0.0, direction: 0.0, damage: 0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {state}), id: 0, image: 0}, &mut game);
 
     //add a blank enemy to the list
-    game = (game.enemies.add)(Enemy {x: 0.0, y: 0.0, health: 0, speed: 0.0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {state}), id: 0, image: 0}, game.clone());
+    (game.enemies.add)(Enemy {x: 0.0, y: 0.0, health: 0, speed: 0.0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, state: &mut Game| {state}), id: 0, image: 0}, &mut game);
 
     //update the player's image
     game.player.image = 1;
@@ -769,7 +768,7 @@ fn main() {
                 } else {
                     let mut buttons = check_buttons();
                     for button in buttons {
-                        game = do_button(button, game.clone());
+                        do_button(button, &mut game);
                     }
                 }
                 if in_run {
