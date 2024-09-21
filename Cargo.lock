@@ -7,7 +7,7 @@ name = "ChronodriveCycleOfSteel"
 version = "0.1.0"
 dependencies = [
  "piston",
- "piston2d-graphics",
+ "piston2d-graphics 0.45.0",
  "piston2d-opengl_graphics",
  "piston_window",
  "pistoncore-glutin_window",
@@ -1223,7 +1223,7 @@ dependencies = [
  "gfx",
  "piston-gfx_texture",
  "piston-shaders_graphics2d",
- "piston2d-graphics",
+ "piston2d-graphics 0.44.0",
  "shader_version",
 ]
 
@@ -1243,6 +1243,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "piston2d-graphics"
+version = "0.45.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efa81d40c7b656d270fdbfeef8c531cc04493a001937f5a7d0c5cdb3db2b1469"
+dependencies = [
+ "interpolation",
+ "piston-texture",
+ "piston-viewport",
+ "read_color",
+ "vecmath",
+]
+
+[[package]]
 name = "piston2d-opengl_graphics"
 version = "0.85.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1256,7 +1269,7 @@ dependencies = [
  "piston-shaders_graphics2d",
  "piston-texture",
  "piston-viewport",
- "piston2d-graphics",
+ "piston2d-graphics 0.44.0",
  "shader_version",
  "wasm-bindgen",
  "web-sys",
@@ -1273,7 +1286,7 @@ dependencies = [
  "piston",
  "piston-texture",
  "piston2d-gfx_graphics",
- "piston2d-graphics",
+ "piston2d-graphics 0.44.0",
  "pistoncore-glutin_window",
  "shader_version",
 ]

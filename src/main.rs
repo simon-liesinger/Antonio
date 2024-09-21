@@ -2,8 +2,13 @@ use piston_window::*;
 use std::time::{Duration, Instant};
 use std::rc::Rc;
 use rand::Rng;
+//people who might play: 
+//Haelian (yt)
+
 
 struct Menu {
+    pressed_space: bool,
+    buttons: ButtonList,
     go: bool,
     quit: bool,
     screen: u8,
@@ -16,12 +21,45 @@ struct Menu {
     artifacts: Vec<Artifact>,
     health_boost: u32,
     damage_boost: u32,
+    button_screens: ButtonListList,
 }
 
 struct Run {
     artifacts: Vec<Artifact>,
     health_modifier: u32,
     damage_modifier: u32,
+}
+
+#[derive(Clone)]
+struct CustomButton {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    action: Action,
+    image: u32,
+    text_image: u32,
+}
+
+//used for storing things between runs so the clones of the player function correctly in future runs
+#[derive(Clone)]
+struct TimeLoopStorage {
+    max_camera: f64,
+    stored_enemies: Vec<Enemy>,
+    stored_platforms: Vec<Platform>,
+    end_enemy_cool_down: f64,
+    end_platform_cool_down: f64,
+    playing: bool,
+}
+
+#[derive(Clone)]
+struct ButtonList {
+    buttons: Vec<CustomButton>,
+}
+
+#[derive(Clone)]
+struct ButtonListList {
+    button_lists: Vec<ButtonList>,
 }
 
 #[derive(Clone)]
@@ -50,6 +88,12 @@ struct KeySequence {
 }
 
 #[derive(Clone)]
+struct Mouse {
+    x: f64,
+    y: f64,
+}
+
+#[derive(Clone)]
 struct Game {
     random_things: RandomThings,
     player: Player,
@@ -61,12 +105,16 @@ struct Game {
     tutorial: u8,
     pressed_keys: Keys,
     platforms: PlatformList,
+    mouse: Mouse,
+    time_loop_storage: TimeLoopStorage,
+    time_loop_reading: TimeLoopStorage,
 }
 
 #[derive(Clone)]
 struct RandomThings {
     platform_cool_down: f64,
     enemy_cool_down: f64,
+    camera_distance: f64,
 }
 
 #[derive(Clone)]
@@ -125,6 +173,7 @@ struct Enemy {
     update: Rc<dyn Fn(u32, &mut Game)>, //update the enemy based on the game state
     id: u32, //the id of the enemy
     image: u32, //the image of the enemy
+    shoot_cool_down: f64, //how long until the enemy can shoot again
 }
 
 #[derive(Clone)]
@@ -283,33 +332,50 @@ fn end_run(mut state: &mut Game) {
     for clone in state.clones.players.clone() {
         kill(clone.id, &mut state);
     }
+
+    //put things in the time loop storage
+    println!("putting things in the time loop storage, max camera: {}", state.time_loop_storage.max_camera);
+    state.time_loop_storage.max_camera = state.time_loop_storage.max_camera.max(state.random_things.camera_distance);
+    println!("max camera: {}", state.time_loop_storage.max_camera);
+    state.random_things.camera_distance = 0.0;
 }
 
-fn do_button(button: Action, menu: &mut Menu) {
+fn do_button(button: Action, mut menu: &mut Menu) {
     if button.action == "play" {
         menu.go = true;
     } else if button.action == "quit" {
         menu.quit = true;
     } else if button.action == "update vehicle" {
-        menu.screen = 1;
-    } else if button.action == "new vehicle" {
         menu.screen = 2;
+    } else if button.action == "new vehicle" {
+        menu.screen = 3;
     } else if button.action == "back" {
         menu.screen = 0;
     } else if button.action == "artifact1" {
         menu.artifacts.push(menu.artifact1.clone());
+        menu.screen = 1;
     } else if button.action == "artifact2" {
         menu.artifacts.push(menu.artifact2.clone());
+        menu.screen = 1;
     } else if button.action == "artifact3" {
         menu.artifacts.push(menu.artifact3.clone());
+        menu.screen = 1;
     } else if button.action == "health" {
         menu.health_modifier += menu.health_boost;
     } else if button.action == "damage" {
         menu.damage_modifier += menu.damage_boost;
     } else if button.action == "next vehicle" {
-        menu.selected_vehicle += 1;
+        if menu.selected_vehicle == 5 {
+            menu.selected_vehicle = 0;
+        } else {
+            menu.selected_vehicle += 1;
+        }
     } else if button.action == "previous vehicle" {
-        menu.selected_vehicle -= 1;
+        if menu.selected_vehicle == 0 {
+            menu.selected_vehicle = 5;
+        } else {
+            menu.selected_vehicle -= 1;
+        }
     }
 }
 
@@ -318,7 +384,22 @@ fn kill(clone_id: String, mut state: &mut Game) {
     (remove)(clone_id, &mut state);
 }
 
-fn check_buttons() -> Vec<Action> {
+fn check_buttons(menu: &mut Menu, state: &Game) -> Vec<Action> {
+    //if the player is pressing space, return the action of the button they have selected
+    if menu.pressed_space {
+        let mut actions = vec![];
+        for button in menu.button_screens.button_lists[menu.screen as usize].buttons.iter() {
+            //take 900-y for the mouse y because the y axis is flipped
+            if state.mouse.x > button.x - button.width/2.0 && state.mouse.x < button.x + button.width/2.0 && 900.0 - state.mouse.y > button.y - button.height/2.0 && 900.0 - state.mouse.y < button.y + button.height/2.0 {
+                actions.push(button.action.clone());
+            }
+        }
+        for action in actions.iter() {
+            println!("{}", action.action);
+        }
+        menu.pressed_space = false;
+        return actions;
+    }
     vec![]
 }
 
@@ -344,6 +425,8 @@ fn update_camera(mut state: &mut Game) {
     for enemy in state.enemies.enemies.iter_mut() {
         enemy.x -= 1.0;
     }
+    state.player.x -= 1.0;
+    state.random_things.camera_distance += 1.0;
 }
 
 fn update_enemies(mut state: &mut Game) {
@@ -379,11 +462,54 @@ fn update_enemies(mut state: &mut Game) {
             enemy.x -= enemy.speed;
             let remove = state.enemies.remove.clone();
             (remove)(id, state);
-            if enemy.x + enemy.width/2.0 > 0.0 && enemy.health > 0.0 {
-                let add = state.enemies.add.clone();
-                (add)(enemy, state);
+            //check for player collisions
+            let mut hit_player = false;
+            if enemy.x + enemy.width/2.0 > state.player.x - state.player.width/2.0 && enemy.x - enemy.width/2.0 < state.player.x + state.player.width/2.0 && enemy.y + enemy.height/2.0 > state.player.y - state.player.height/2.0 && enemy.y - enemy.height/2.0 < state.player.y + state.player.height/2.0 {
+                state.player.health -= 10.0;
+                hit_player = true;
             }
-        }), id: new_id, image: 0};
+            //shooting
+            let mut used_ids = vec![];
+            for bullet in state.enemy_bullets.bullets.clone() {
+                used_ids.push(bullet.id);
+            }
+            let mut new_id = 0;
+            while used_ids.contains(&new_id) {
+                new_id += 1;
+            }
+            let add = state.enemy_bullets.add.clone();
+            if enemy.shoot_cool_down <= 0.0 {
+                (add)(Bullet {x: enemy.x.clone(), y: enemy.y.clone(), width: 10.0, height: 10.0, speed: 10.0, direction: 0.0, damage: 1.0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, mut state: &mut Game| {
+                    let get = state.enemy_bullets.get.clone();
+                    let mut bullet = (get)(id, state);
+                    bullet.x -= bullet.speed;
+                    let remove = state.enemy_bullets.remove.clone();
+                    (remove)(id, state);
+                    let add = state.enemy_bullets.add.clone();
+                    let overlap = state.platforms.platforms.iter().filter(|platform| {
+                        bullet.x + bullet.width/2.0 > platform.x - platform.width/2.0 && bullet.x - bullet.width/2.0 < platform.x + platform.width/2.0 && bullet.y + bullet.height/2.0 > platform.y - platform.height/2.0 && bullet.y - bullet.height/2.0 < platform.y + platform.height/2.0
+                    }).collect::<Vec<&Platform>>();
+                    //check for player collisions
+                    let mut hit_player = false;
+                    if bullet.x + bullet.width/2.0 > state.player.x - state.player.width/2.0 && bullet.x - bullet.width/2.0 < state.player.x + state.player.width/2.0 && bullet.y + bullet.height/2.0 > state.player.y - state.player.height/2.0 && bullet.y - bullet.height/2.0 < state.player.y + state.player.height/2.0 {
+                        state.player.health -= bullet.damage;
+                        hit_player = true;
+                    }
+                    if overlap.len() == 0 && bullet.x + bullet.width/2.0 > 0.0 && !hit_player {
+                        (add)(bullet, state);
+                    }
+                }), id: new_id, image: 0}, state);
+                enemy.shoot_cool_down = 1.0;
+            } else {
+                enemy.shoot_cool_down -= 1.0/100.0;
+            }
+
+
+            if enemy.x + enemy.width/2.0 > 0.0 && enemy.health > 0.0 && !hit_player {
+                let add = state.enemies.add.clone();
+                (add)(enemy.clone(), state);
+            }
+        }), id: new_id, image: 0, shoot_cool_down: 0.0};
         (add)(enemy, state);
         state.random_things.enemy_cool_down = 5.0;
     }
@@ -416,30 +542,104 @@ fn update_platforms(mut state: &mut Game) {
         (remove)(id, &mut state);
     }
 
+    //if past max camera, add new platforms, otherwise play them back from
+    //the time loop storage
 
-    //find all used IDs
-    let mut used_ids = vec![];
-    for platform in state.platforms.platforms.clone() {
-        used_ids.push(platform.id);
+    if state.random_things.camera_distance >= state.time_loop_reading.max_camera {
+        //find all used IDs
+        let mut used_ids = vec![];
+        for platform in state.platforms.platforms.clone() {
+            used_ids.push(platform.id);
+        }
+        //use a new ID
+        let mut new_id = 0;
+        while used_ids.contains(&new_id) {
+            new_id += 1;
+        }
+        //add a new platform with a random image
+        if state.random_things.platform_cool_down <= 0.0 {
+            let image = rand::thread_rng().gen_range(0..3);
+            let add = state.platforms.add.clone();
+            let y = rand::thread_rng().gen_range(0..900) as f64;
+            let width = rand::thread_rng().gen_range(200..400) as f64;
+            let height = 50.0;
+            let x = 1440.0 + width/2.0;
+            println!("y: {}", y);
+            let platform = Platform {x: x, y: y, width: width, height: height, id: new_id, image: image};
+            (add)(platform.clone(), &mut state);
+            //add the platform to the time loop storage
+            state.time_loop_storage.stored_platforms.push(platform);
+            state.random_things.platform_cool_down = 1.5;
+        }
+        state.random_things.platform_cool_down -= 1.0/100.0;
+    } else {
+        if state.random_things.platform_cool_down <= 0.0 {
+            let mut platform = state.time_loop_reading.stored_platforms.pop().unwrap();
+            //find all used IDs
+            let mut used_ids = vec![];
+            for platform in state.platforms.platforms.clone() {
+                used_ids.push(platform.id);
+            }
+            //use a new ID
+            let mut new_id = 0;
+            while used_ids.contains(&new_id) {
+                new_id += 1;
+            }
+            platform.id = new_id;
+            //print the platform y
+            println!("{}", platform.y);
+            let add = state.platforms.add.clone();
+            (add)(platform, &mut state);
+            state.random_things.platform_cool_down = 1.5;
+        }
+        state.random_things.platform_cool_down -= 1.0/100.0;
     }
-    //use a new ID
-    let mut new_id = 0;
-    while used_ids.contains(&new_id) {
-        new_id += 1;
+    
+}
+
+fn update_time_loop(mut state: &mut Game) {
+    if state.time_loop_storage.max_camera == state.random_things.camera_distance {
+        state.time_loop_reading.playing = true;
+    } else {
+        state.time_loop_reading.playing = false;
     }
-    //add a new platform with a random image
-    if state.random_things.platform_cool_down <= 0.0 {
-        let image = rand::thread_rng().gen_range(0..3);
-        let add = state.platforms.add.clone();
-        let y = rand::thread_rng().gen_range(0..900) as f64;
-        let width = rand::thread_rng().gen_range(200..400) as f64;
-        let height = 50.0;
-        let x = 1440.0 + width/2.0;
-        let platform = Platform {x: x, y: y, width: width, height: height, id: new_id, image: image};
-        (add)(platform, &mut state);
-        state.random_things.platform_cool_down = 1.5;
+}
+
+fn update_menu(mut menu: &mut Menu, mut state: &mut Game) {
+    //if menu.play, begin a run
+    if menu.go {
+        menu.go = false;
+        menu.screen = 0;
+        state.in_run = true;
+        let mut reset = state.player.reset.clone();
+        (reset)(&mut state.player);
+        for clone in state.clones.players.iter_mut() {
+            reset = clone.reset.clone();
+            (reset)(clone);
+        }
+        let mut remove = state.player_bullets.remove.clone();
+        for bullet in state.player_bullets.bullets.clone() {
+            (remove)(bullet.id, &mut state);
+        }
+        remove = state.enemy_bullets.remove.clone();
+        for bullet in state.enemy_bullets.bullets.clone() {
+            (remove)(bullet.id, &mut state);
+        }
+        remove = state.enemies.remove.clone();
+        for enemy in state.enemies.enemies.clone() {
+            (remove)(enemy.id, &mut state);
+        }
+        remove = state.platforms.remove.clone();
+        for platform in state.platforms.platforms.clone() {
+            (remove)(platform.id, &mut state);
+        }
+        state.time_loop_reading = state.time_loop_storage.clone();
     }
-    state.random_things.platform_cool_down -= 1.0/100.0;
+    //if menu.quit, quit the game
+    if menu.quit {
+        menu.quit = false;
+        state.in_run = false;
+    }
 }
 
 fn main() {
@@ -450,6 +650,7 @@ fn main() {
         random_things: RandomThings {
             platform_cool_down: 0.0,
             enemy_cool_down: 0.0,
+            camera_distance: 0.0,
         },
         player: Player {
             id: "Base".to_string(),
@@ -581,9 +782,9 @@ fn main() {
                 player.x = 0.0;
                 player.y = 0.0;
                 player.health = 100.0;
-                player.data_bool = vec![];
+                player.data_bool = vec![true, false, false];
                 player.data_string = vec![];
-                player.data_num = vec![];
+                player.data_num = vec![0.0, 0.0, 0.0];
             }),
             active: true,
             image: 0,
@@ -672,7 +873,7 @@ fn main() {
                 state.enemy_bullets.bullets[0].clone()
             }),
             remove: Rc::new(|id: u32, mut state: &mut Game| {
-                for i in 0..state.enemy_bullets.bullets.len() {
+                for i in 0..state.enemy_bullets.bullets.len()-1 {
                     if state.enemy_bullets.bullets[i].id == id {
                         state.enemy_bullets.bullets.remove(i);
                     }
@@ -753,9 +954,30 @@ fn main() {
                 }
             }),
         },
+        mouse: Mouse {
+            x: 0.0,
+            y: 0.0,
+        },
+        time_loop_storage: TimeLoopStorage {
+            max_camera: 0.0,
+            stored_enemies: vec![],
+            stored_platforms: vec![],
+            end_enemy_cool_down: 0.0,
+            end_platform_cool_down: 0.0,
+            playing: false,
+        },
+        time_loop_reading: TimeLoopStorage {
+            max_camera: 0.0,
+            stored_enemies: vec![],
+            stored_platforms: vec![],
+            end_enemy_cool_down: 0.0,
+            end_platform_cool_down: 0.0,
+            playing: false,
+        },
     };
 
     let mut menu = Menu {
+        pressed_space: false,
         go: false,
         quit: false,
         screen: 0,
@@ -784,11 +1006,59 @@ fn main() {
                 player.jump += 10.0;
             }),
         },
+        buttons: ButtonList {
+            buttons: vec![
+                CustomButton {x: 720.0, y: 450.0, width: 200.0, height: 50.0, action: Action {action: "play".to_string()}, image: 2, text_image: 100},
+                CustomButton {x: 720.0, y: 400.0, width: 200.0, height: 50.0, action: Action {action: "quit".to_string()}, image: 1, text_image: 4},
+                CustomButton {x: 720.0, y: 350.0, width: 200.0, height: 50.0, action: Action {action: "update vehicle".to_string()}, image: 13, text_image: 11},
+                CustomButton {x: 720.0, y: 300.0, width: 200.0, height: 50.0, action: Action {action: "new vehicle".to_string()}, image: 12, text_image: 6},
+                CustomButton {x: 720.0, y: 250.0, width: 200.0, height: 50.0, action: Action {action: "back".to_string()}, image: 0, text_image: 0},
+                CustomButton {x: 720.0, y: 200.0, width: 200.0, height: 50.0, action: Action {action: "artifact1".to_string()}, image: 12, text_image: 0},
+                CustomButton {x: 720.0, y: 150.0, width: 200.0, height: 50.0, action: Action {action: "artifact2".to_string()}, image: 12, text_image: 0},
+                CustomButton {x: 720.0, y: 100.0, width: 200.0, height: 50.0, action: Action {action: "artifact3".to_string()}, image: 12, text_image: 0},
+                CustomButton {x: 720.0, y: 50.0, width: 200.0, height: 50.0, action: Action {action: "health".to_string()}, image: 12, text_image: 9},
+                CustomButton {x: 720.0, y: 0.0, width: 200.0, height: 50.0, action: Action {action: "damage".to_string()}, image: 12, text_image: 8},
+                CustomButton {x: 720.0, y: 0.0, width: 200.0, height: 50.0, action: Action {action: "next vehicle".to_string()}, image: 11, text_image: 5},
+                CustomButton {x: 720.0, y: 0.0, width: 200.0, height: 50.0, action: Action {action: "previous vehicle".to_string()}, image: 11, text_image: 5},
+            ],
+        },
+        button_screens: ButtonListList {
+            button_lists: vec![
+                ButtonList {
+                    buttons: vec![
+                        CustomButton {x: 220.0, y: 150.0, width: 200.0, height: 200.0, action: Action {action: "artifact1".to_string()}, image: 12, text_image: 100},
+                        CustomButton {x: 720.0, y: 150.0, width: 200.0, height: 200.0, action: Action {action: "artifact2".to_string()}, image: 12, text_image: 100},
+                        CustomButton {x: 1220.0, y: 150.0, width: 200.0, height: 200.0, action: Action {action: "artifact3".to_string()}, image: 12, text_image: 100},
+                    ],
+                },
+                ButtonList {
+                    buttons: vec![
+                        CustomButton {x: 520.0, y: 450.0, width: 200.0, height: 200.0, action: Action {action: "update vehicle".to_string()}, image: 13, text_image: 11},
+                        CustomButton {x: 920.0, y: 450.0, width: 200.0, height: 200.0, action: Action {action: "new vehicle".to_string()}, image: 12, text_image: 6},
+                    ]
+                },
+                ButtonList {
+                    buttons: vec![
+                        CustomButton {x: 520.0, y: 450.0, width: 200.0, height: 200.0, action: Action {action: "health".to_string()}, image: 12, text_image: 9},
+                        CustomButton {x: 920.0, y: 450.0, width: 200.0, height: 200.0, action: Action {action: "damage".to_string()}, image: 12, text_image: 8},
+                        CustomButton {x: 720.0, y: 300.0, width: 200.0, height: 200.0, action: Action {action: "play".to_string()}, image: 2, text_image: 100},
+                    ]
+                },
+                ButtonList {
+                    buttons: vec![
+                        CustomButton {x: 1120.0, y: 450.0, width: 200.0, height: 200.0, action: Action {action: "next vehicle".to_string()}, image: 11, text_image: 5},
+                        CustomButton {x: 320.0, y: 450.0, width: 200.0, height: 200.0, action: Action {action: "previous vehicle".to_string()}, image: 11, text_image: 5},
+                        CustomButton {x: 720.0, y: 250.0, width: 200.0, height: 200.0, action: Action {action: "play".to_string()}, image: 2, text_image: 100},
+                    ]
+                }
+            ]
+        },
         health_modifier: 0,
         damage_modifier: 0,
         artifacts: vec![],
         health_boost: 0,
         damage_boost: 0,
+        
     };
     //add blank things for indexing
         //add a blank move to the player
@@ -810,13 +1080,16 @@ fn main() {
 
         //add a blank enemy to the list
         let add = game.enemies.add.clone();
-        (add)(Enemy {x: 0.0, y: 0.0, health: 0.0, speed: 0.0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, mut state: &mut Game| {}), id: 0, image: 0, width: 0.0, height: 0.0}, &mut game);
+        (add)(Enemy {x: 0.0, y: 0.0, health: 0.0, speed: 0.0, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, mut state: &mut Game| {}), id: 0, image: 0, width: 0.0, height: 0.0, shoot_cool_down: 0.0}, &mut game);
 
         //update the player's image
         game.player.image = 1;
 
     let mut in_run = true;
-    let mut window: PistonWindow = WindowSettings::new("Chronodrive: Cycle of Steel", [1440, 900])
+    let mut window: PistonWindow = WindowSettings::new(
+            "Chronodrive: Cycle of Steel", 
+            [1440, 900]
+        )
         .exit_on_esc(true)
         .build()
         .expect("window failed to build");
@@ -953,33 +1226,219 @@ fn main() {
         Flip::None,
         &TextureSettings::new(),
         ).expect("mouse image failed to load");
+    //get the button images
+        let button_back = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/back.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
 
+        let button_loop = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/loop.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
 
+        let button_play_1 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/play_1.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
 
-    
+        let button_play_2 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/play_2.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let button_play_3 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/play_3.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let button_play_4 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/play_4.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let button_play_5 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/play_5.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let button_play_6 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/play_6.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let button_play_7 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/play_7.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let button_slack = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/slack.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let button_slider = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/slider.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let button_switch_1 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/switch_1.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let button_switch_2 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/switch_2.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let button_upgrade = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/buttons/upgrade.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button image failed to load");
+
+        let buttons = vec![button_back, button_loop, button_play_1, button_play_2, button_play_3, button_play_4, button_play_5, button_play_6, button_play_7, button_slack, button_slider, button_switch_1, button_switch_2, button_upgrade];
+
+    //get the button text images
+        let button_text_batte = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/batte.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_bealth = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/bealth.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_damage = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/damage.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_end_run_1 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/end_run_1.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_end_run_2 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/end_run_2.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_next = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/next.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_switch = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/switch.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_upgrade_daalge = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/upgrade_daalge.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_upgrade_damage = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/upgrade_damage.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_upgrade_health_1 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/upgrade_health_1.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_upgrade_health_2 = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/upgrade_health_2.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_text_upgrade = Texture::from_path(
+        &mut window.create_texture_context(),
+        "assets/images/buttons/text/upgrade.png",
+        Flip::None,
+        &TextureSettings::new(),
+        ).expect("button text image failed to load");
+
+        let button_texts = vec![button_text_batte, button_text_bealth, button_text_damage, button_text_end_run_1, button_text_end_run_2, button_text_next, button_text_switch, button_text_upgrade_daalge, button_text_upgrade_damage, button_text_upgrade_health_1, button_text_upgrade_health_2, button_text_upgrade];
+
     while let Some(event) = window.next() {
         if let Some(_) = event.update_args() {
             let now = Instant::now();
             if now.duration_since(last_update) >= update_interval {
                 last_update = now;
                 if game.in_run {
-                    //game = build_platforms(update_camera(check_deaths(check_hits(update_enemies(update_bullets(update_players(game.clone())))))));
                     update_players(&mut game);
                     update_bullets(&mut game);
                     update_enemies(&mut game);
                     check_hits(&mut game);
                     check_deaths(&mut game);
-                    update_camera(&mut game);
                     update_platforms(&mut game);
+                    update_camera(&mut game);
+                    update_time_loop(&mut game);
                     if check_death(&game.player) {
                         end_run(&mut game);
+                        menu.screen = 0;
                     }
                 } else {
                     if in_run {
-                        let mut buttons = check_buttons();
+                        let mut buttons = check_buttons(&mut menu, &game);
                         for button in buttons {
                             do_button(button, &mut menu);
                         }
+                        update_menu(&mut menu, &mut game);
                     } else {
 
                     }
@@ -1020,6 +1479,13 @@ fn main() {
                     println!("playing back");
                     in_run = false;
                 }
+                Key::Space => {
+                    menu.pressed_space = true;
+                }
+                //end run button for testing
+                Key::X => {
+                    game.player.health = 0.0;
+                }
                 _ => {}
             }
         }
@@ -1044,15 +1510,24 @@ fn main() {
                 Key::E => {
                     game.pressed_keys.ability = false
                 }
+                Key::Space => {
+                    menu.pressed_space = false;
+                }
                 _ => {}
             }
+        }
+
+        //track the mouse
+        if let Some(pos) = event.mouse_cursor_args() {
+            game.mouse.x = pos[0];
+            game.mouse.y = pos[1];
         }
         
 
         // Draw the window's contents
         window.draw_2d(&event, |c, g, _| {
             clear([0.0, 0.0, 1.0, 1.0], g); // Clear the screen with white color
-            
+
             if game.in_run {
 
                 //draw the background at full size
@@ -1093,17 +1568,31 @@ fn main() {
                     image(&enemy_images[enemy.image as usize], c.transform.scale(enemy.width/(image_size.0 as f64), enemy.height/(image_size.1 as f64)).trans((enemy.x - enemy.width/2.0)/enemy.width*(image_size.0 as f64), (900.0 - (enemy.y + enemy.height/2.0))/enemy.height*(image_size.1 as f64)), g);
                 }
             } else {
-                //draw the menu background
-                image(&menu_image, c.transform.scale(1440.0/1280.0, 900.0/1280.0), g);
+                //draw the menu background, filling the screen
+                let image_size = menu_image.get_size();
+                image(&menu_image, c.transform.scale(1440.0/(image_size.0 as f64), 900.0/(image_size.1 as f64)), g);
                 //draw the buttons
-                //for button in buttons {
-                //    rectangle([0.0, 0.0, 0.0, 1.0], [button.x, button.y, button.width, button.height], c.transform.scale(1.0, 1.0), g);
-                //}
+                for button in menu.button_screens.button_lists[menu.screen as usize].buttons.iter() {
+                    let image_size = buttons[button.image as usize].get_size();
+                    image(&buttons[button.image as usize], c.transform.scale(button.width/(image_size.0 as f64), button.height/(image_size.1 as f64)).trans((button.x - button.width/2.0)/button.width*(image_size.0 as f64), (900.0 - (button.y + button.height/2.0))/button.height*(image_size.1 as f64)), g);
+                }
+                //draw the button text 0.8* button height below the buttons, at half the height but the correct aspect ratio
+                for button in menu.button_screens.button_lists[menu.screen as usize].buttons.iter() {
+                    if button.text_image != 100 {
+                        let button_size = button.height;
+                        let image_size = button_texts[button.text_image as usize].get_size();
+                        let aspect_ratio = image_size.0 as f64 / image_size.1 as f64;
+                        let height = button_size / 3.0;
+                        let width = height * aspect_ratio;
+                        let y_offset = button_size;
+                        image(&button_texts[button.text_image as usize], c.transform.scale(width/(image_size.0 as f64), height/(image_size.1 as f64)).trans((button.x - width/2.0)/width*(image_size.0 as f64), (900.0 - (button.y + button.height/2.0) + y_offset)/height*(image_size.1 as f64)), g);
+                    }
+                }
             }
             //draw the mouse
             let x_scale = 0.1;
             let y_scale = 0.1;
-            image(&mouse, c.transform.scale(x_scale, y_scale).trans(0.0/x_scale, 0.0/y_scale), g);
+            image(&mouse, c.transform.scale(x_scale, y_scale).trans(game.mouse.x/x_scale, game.mouse.y/y_scale), g);
         });
     }
 }
