@@ -2378,7 +2378,7 @@ fn main() {
             //overall quite weak, but there can be multiple clones of it, so it just looks weak here
             Player {
                 damage: 0.7,
-                id: "Swarm".to_string(),
+                id: 1.to_string(),
                 x: 0.0,
                 y: 0.0,
                 width: 50.0,
