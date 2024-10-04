@@ -1373,6 +1373,7 @@ fn main() {
         health_boost: 0,
         damage_boost: 0,
         vehicles: vec![
+            //relatively mobile, low health, low damage, no ability
             Player {
                 damage: 1.0,
                 id: "Base".to_string(),
@@ -1380,7 +1381,7 @@ fn main() {
                 y: 0.0,
                 width: 50.0,
                 height: 60.0,
-                health: 100.0,
+                health: 70.0,
                 speed: 1.0,
                 jump: 50.0,
                 data_bool: vec![true, false, false],
@@ -1628,6 +1629,7 @@ fn main() {
                 active: true,
                 image: 2,
             },
+            //high health, collision damage, slow, heals
             Player {
                 damage: 0.0,
                 id: "Smasher".to_string(),
@@ -1809,6 +1811,567 @@ fn main() {
                 active: true,
                 image: 0,
             },
+            //high damage arcing projectiles, low health, slow, shoots explosive projectile on ability
+            Player {
+                damage: 100.0,
+                id: "Cannoneer".to_string(),
+                x: 0.0,
+                y: 0.0,
+                width: 50.0,
+                height: 60.0,
+                health: 70.0,
+                speed: 0.5,
+                jump: 50.0,
+                data_bool: vec![true, false, false],
+                data_string: vec![],
+                data_num: vec![0.0, 0.0, 0.0, 0.0],
+                moves: KeySequence {sequence: vec![], step: 0, length: 0},
+                apply_inputs: Rc::new(|state: &mut Game| {
+                    if state.player.moves.sequence[state.player.moves.step as usize].a {
+                        state.player.data_num[0] -= state.player.speed;
+                    }
+                    if state.player.moves.sequence[state.player.moves.step as usize].s {
+                        state.player.data_num[1] = state.player.data_num[1].min(0.0);
+                    }
+                    if state.player.moves.sequence[state.player.moves.step as usize].d {
+                        state.player.data_num[0] += state.player.speed;
+                    }
+                    if state.player.moves.sequence[state.player.moves.step as usize].w {
+                        if state.player.data_bool[2] {
+                            state.player.data_num[1] = state.player.data_num[1].max(state.player.jump);
+                        }
+                    }
+                    if state.player.moves.sequence[state.player.moves.step as usize].special {
+                        if !state.player.data_bool[1] {
+                            if state.player.data_num[2] <= 0.0 {
+                                state.player.data_bool[1] = true;
+                                //shoot an explosive arcing projectile
+                                //find all used IDs
+                                let mut used_ids = vec![];
+                                for bullet in state.player_bullets.bullets.clone() {
+                                    used_ids.push(bullet.id);
+                                }
+                                //use a new ID
+                                let mut new_id = 0;
+                                while used_ids.contains(&new_id) {
+                                    new_id += 1;
+                                }
+                                //add a new bullet
+                                let add = state.player_bullets.add.clone();
+                                (add)(Bullet {x: state.player.x, y: state.player.y, width: 10.0, height: 10.0, speed: 10.0, direction: 0.0, damage: state.player.damage, data_bool: vec![], data_string: vec![], data_num: vec![3.0, 6.0], update: Rc::new(|id: u32, mut state: &mut Game| {
+                                    let get = state.player_bullets.get.clone();
+                                    let mut bullet = (get)(id, state);
+                                    bullet.x += bullet.data_num[0];
+                                    bullet.y += bullet.data_num[1];
+                                    bullet.data_num[1] -= 1.0/15.0;
+                                    let remove = state.player_bullets.remove.clone();
+                                    (remove)(id, state);
+                                    let add = state.player_bullets.add.clone();
+                                    let overlap = state.platforms.platforms.iter().filter(|platform| {
+                                        bullet.x + bullet.width/2.0 > platform.x - platform.width/2.0 && bullet.x - bullet.width/2.0 < platform.x + platform.width/2.0 && bullet.y + bullet.height/2.0 > platform.y - platform.height/2.0 && bullet.y - bullet.height/2.0 < platform.y + platform.height/2.0
+                                    }).collect::<Vec<&Platform>>();
+                                    //check for enemy collisions
+                                    let mut hit_enemies = vec![];
+                                    for mut enemy in state.enemies.enemies.iter_mut() {
+                                        if bullet.x + bullet.width/2.0 > enemy.x - enemy.width/2.0 && bullet.x - bullet.width/2.0 < enemy.x + enemy.width/2.0 && bullet.y + bullet.height/2.0 > enemy.y - enemy.height/2.0 && bullet.y - bullet.height/2.0 < enemy.y + enemy.height/2.0 {
+                                            enemy.health -= bullet.damage;
+                                            hit_enemies.push(enemy.id);
+                                        }
+                                    }
+                                    if overlap.len() == 0 && hit_enemies.len() == 0 {
+                                        (add)(bullet, state);
+                                    } else {
+                                        //HUGE explosion, damaging all enemies near the bullet
+                                        for mut enemy in state.enemies.enemies.iter_mut() {
+                                            if (bullet.x - enemy.x).abs() < 300.0 && (bullet.y - enemy.y).abs() < 300.0 {
+                                                enemy.health -= bullet.damage;
+                                            }
+                                        }
+                                    }
+                                }), id: new_id, image: 0}, state);
+                                state.player.data_num[2] = 5.0;
+                            }
+                        } else {
+                            state.player.data_bool[1] = false;
+                        }
+                    }
+                    state.player.data_bool[2] = false;
+                    if state.player.data_num[2] > 0.0 {
+                        state.player.data_num[2] -= 0.05;
+                    }
+                    //no basic shooting for the cannoneer
+                    //apply air resistance
+                    state.player.data_num[0] *= 0.9;
+                    state.player.data_num[1] *= 0.9;
+                    //apply gravity
+                    state.player.data_num[1] -= 1.0;
+                    //check for platform collisions
+                    for platform in state.platforms.platforms.iter() {
+                        if (state.player.x - platform.x).abs() < platform.width/2.0 + state.player.width/2.0 && (state.player.y - platform.y).abs() < platform.height/2.0 + state.player.height/2.0 {
+                            //check which side of the platform is closest
+                            let left_overlap = (state.player.x + state.player.width/2.0) - (platform.x - platform.width/2.0);
+                            let right_overlap = (platform.x + platform.width/2.0) - (state.player.x - state.player.width/2.0);
+                            let bottom_overlap = (state.player.y + state.player.height/2.0) - (platform.y - platform.height/2.0);
+                            let top_overlap = (platform.y + platform.height/2.0) - (state.player.y - state.player.height/2.0);
+                            //find the smallest overlap
+                            let smallest_overlap = left_overlap.min(right_overlap).min(top_overlap).min(bottom_overlap);
+                            //apply the smallest overlap
+                            if smallest_overlap == left_overlap {
+                                state.player.data_num[0] = state.player.data_num[0].min(0.0);
+                                state.player.x = platform.x - platform.width/2.0 - state.player.width/2.0 + 1.0;
+                            } else if smallest_overlap == right_overlap {
+                                state.player.data_num[0] = state.player.data_num[0].max(0.0);
+                                state.player.x = platform.x + platform.width/2.0 + state.player.width/2.0 - 1.0;
+                            } else if smallest_overlap == top_overlap {
+                                state.player.data_num[1] = state.player.data_num[1].max(0.0);
+                                state.player.y = platform.y + platform.height/2.0 + state.player.height/2.0 - 1.0;
+                                state.player.data_bool[2] = true;
+                            } else if smallest_overlap == bottom_overlap {
+                                state.player.data_num[1] = state.player.data_num[1].min(0.0);
+                                state.player.y = platform.y - platform.height/2.0 - state.player.height/2.0 + 1.0;
+                            }
+                        }
+                    }
+                    //check for ground collisions
+                    if state.player.y - state.player.height/2.0 < 0.0 {
+                        state.player.data_bool[2] = true;
+                        state.player.data_num[1] = state.player.data_num[1].max(0.0);
+                        state.player.y = state.player.height/2.0 - 1.0;
+                    }
+                    //move the player
+                    state.player.x += state.player.data_num[0];
+                    state.player.y += state.player.data_num[1];
+                    //update the step
+                    if state.player.moves.step < state.player.moves.length-1 {
+                        state.player.moves.step += 1;
+                    }
+                }),
+                apply_inputs_as_clone: Rc::new(|state: &mut Game, id: String| {
+                    let get = state.clones.get.clone();
+                    let mut clone = (get)(id, state);
+                    if clone.moves.sequence[clone.moves.step as usize].a {
+                        clone.data_num[0] -= clone.speed;
+                    }
+                    if clone.moves.sequence[clone.moves.step as usize].s {
+                        clone.data_num[1] = clone.data_num[1].min(0.0);
+                    }
+                    if clone.moves.sequence[clone.moves.step as usize].d {
+                        clone.data_num[0] += clone.speed;
+                    }
+                    if clone.moves.sequence[clone.moves.step as usize].w {
+                        if clone.data_bool[2] {
+                            clone.data_num[1] = clone.data_num[1].max(clone.jump);
+                        }
+                    }
+                    if clone.moves.sequence[clone.moves.step as usize].special {
+                        if !clone.data_bool[1] {
+                            if clone.data_num[2] <= 0.0 {
+                                clone.data_bool[1] = true;
+                                //shoot an explosive projectile
+                                //find all used IDs
+                                let mut used_ids = vec![];
+                                for bullet in state.player_bullets.bullets.clone() {
+                                    used_ids.push(bullet.id);
+                                }
+                                //use a new ID
+                                let mut new_id = 0;
+                                while used_ids.contains(&new_id) {
+                                    new_id += 1;
+                                }
+                                //add a new bullet
+                                let add = state.player_bullets.add.clone();
+                                (add)(Bullet {x: clone.x, y: clone.y, width: 10.0, height: 10.0, speed: 10.0, direction: 0.0, damage: clone.damage, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, mut state: &mut Game| {
+                                    let get = state.player_bullets.get.clone();
+                                    let mut bullet = (get)(id, state);
+                                    bullet.x += 10.0;
+                                    let remove = state.player_bullets.remove.clone();
+                                    (remove)(id, state);
+                                    let add = state.player_bullets.add.clone();
+                                    let overlap = state.platforms.platforms.iter().filter(|platform| {
+                                        bullet.x + bullet.width/2.0 > platform.x - platform.width/2.0 && bullet.x - bullet.width/2.0 < platform.x + platform.width/2.0 && bullet.y + bullet.height/2.0 > platform.y - platform.height/2.0 && bullet.y - bullet.height/2.0 < platform.y + platform.height/2.0
+                                    }).collect::<Vec<&Platform>>();
+                                    //check for enemy collisions
+                                    let mut hit_enemies = vec![];
+                                    for mut enemy in state.enemies.enemies.iter_mut() {
+                                        if bullet.x + bullet.width/2.0 > enemy.x - enemy.width/2.0 && bullet.x - bullet.width/2.0 < enemy.x + enemy.width/2.0 && bullet.y + bullet.height/2.0 > enemy.y - enemy.height/2.0 && bullet.y - bullet.height/2.0 < enemy.y + enemy.height/2.0 {
+                                            enemy.health -= bullet.damage;
+                                            hit_enemies.push(enemy.id);
+                                        }
+                                    }
+                                    if overlap.len() == 0 && hit_enemies.len() == 0 {
+                                        (add)(bullet, state);
+                                    } else {
+                                        //large explosion, damaging all enemies near the bullet
+                                        for mut enemy in state.enemies.enemies.iter_mut() {
+                                            if (bullet.x - enemy.x).abs() < 50.0 && (bullet.y - enemy.y).abs() < 50.0 {
+                                                enemy.health -= bullet.damage;
+                                            }
+                                        }
+                                    }
+                                }), id: new_id, image: 0}, state);
+                                clone.data_num[2] = 20.0;
+                            }
+                        } else {
+                            clone.data_bool[1] = false;
+                        }
+                    }
+                    if clone.data_num[2] > 0.0 {
+                        clone.data_num[2] -= 0.05;
+                    }
+                    //shooting
+                    if clone.data_bool[0] && clone.data_num[3] <= 0.0 {
+                        //find all used IDs
+                        let mut used_ids = vec![];
+                        for bullet in state.player_bullets.bullets.clone() {
+                            used_ids.push(bullet.id);
+                        }
+                        //use a new ID
+                        let mut new_id = 0;
+                        while used_ids.contains(&new_id) {
+                            new_id += 1;
+                        }
+                        //add a new bullet
+                        let add = state.player_bullets.add.clone();
+                        (add)(Bullet {x: clone.x, y: clone.y, width: 10.0, height: 10.0, speed: 10.0, direction: 0.0, damage: clone.damage, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, mut state: &mut Game| {
+                            let get = state.player_bullets.get.clone();
+                            let mut bullet = (get)(id, state);
+                            bullet.x += 10.0;
+                            let remove = state.player_bullets.remove.clone();
+                            (remove)(id, state);
+                            let add = state.player_bullets.add.clone();
+                            let overlap = state.platforms.platforms.iter().filter(|platform| {
+                                bullet.x + bullet.width/2.0 > platform.x - platform.width/2.0 && bullet.x - bullet.width/2.0 < platform.x + platform.width/2.0 && bullet.y + bullet.height/2.0 > platform.y - platform.height/2.0 && bullet.y - bullet.height/2.0 < platform.y + platform.height/2.0
+                            }).collect::<Vec<&Platform>>();
+                            //check for enemy collisions
+                            let mut hit_enemies = vec![];
+                            for mut enemy in state.enemies.enemies.iter_mut() {
+                                if bullet.x + bullet.width/2.0 > enemy.x - enemy.width/2.0 && bullet.x - bullet.width/2.0 < enemy.x + enemy.width/2.0 && bullet.y + bullet.height/2.0 > enemy.y - enemy.height/2.0 && bullet.y - bullet.height/2.0 < enemy.y + enemy.height/2.0 {
+                                    enemy.health -= bullet.damage;
+                                    hit_enemies.push(enemy.id);
+                                }
+                            }
+                            if overlap.len() == 0 && hit_enemies.len() == 0 {
+                                (add)(bullet, state);
+                            }
+                        }), id: new_id, image: 0}, state);
+                        //apply bullet cooldown
+                        clone.data_num[3] = 1.0;
+                    }
+                    //apply air resistance
+                    clone.data_num[0] *= 0.9;
+                    clone.data_num[1] *= 0.9;
+                    //apply gravity
+                    clone.data_num[1] -= 1.0;
+                    //check for platform collisions
+                    for platform in state.platforms.platforms.iter() {
+                        if (clone.x - platform.x).abs() < platform.width/2.0 + clone.width/2.0 && (clone.y - platform.y).abs() < platform.height/2.0 + clone.height/2.0 {
+                            //check which side of the platform is closest
+                            let left_overlap = (clone.x + clone.width/2.0) - (platform.x - platform.width/2.0);
+                            let right_overlap = (platform.x + platform.width/2.0) - (clone.x - clone.width/2.0);
+                            let bottom_overlap = (clone.y + clone.height/2.0) - (platform.y - platform.height/2.0);
+                            let top_overlap = (platform.y + platform.height/2.0) - (clone.y - clone.height/2.0);
+                            //find the smallest overlap
+                            let smallest_overlap = left_overlap.min(right_overlap).min(top_overlap).min(bottom_overlap);
+                            //apply the smallest overlap
+                            if smallest_overlap == left_overlap {
+                                clone.data_num[0] = clone.data_num[0].min(0.0);
+                                clone.x = platform.x - platform.width/2.0 - clone.width/2.0 + 1.0;
+                            } else if smallest_overlap == right_overlap {
+                                clone.data_num[0] = clone.data_num[0].max(0.0);
+                                clone.x = platform.x + platform.width/2.0 + clone.width/2.0 - 1.0;
+                            } else if smallest_overlap == top_overlap {
+                                clone.data_num[1] = clone.data_num[1].max(0.0);
+                                clone.y = platform.y + platform.height/2.0 + clone.height/2.0 - 1.0;
+                                clone.data_bool[2] = true;
+                            } else if smallest_overlap == bottom_overlap {
+                                clone.data_num[1] = clone.data_num[1].min(0.0);
+                                clone.y = platform.y - platform.height/2.0 - clone.height/2.0 + 1.0;
+                            }
+                        }
+                    }
+                    //check for ground collisions
+                    if clone.y - clone.height/2.0 < 0.0 {
+                        clone.data_bool[2] = true;
+                        clone.data_num[1] = clone.data_num[1].max(0.0);
+                        clone.y = clone.height/2.0 - 1.0;
+                    }
+                    //move the player
+                    clone.x += clone.data_num[0];
+                    clone.y += clone.data_num[1];
+                    //update the step
+                    if clone.moves.step < clone.moves.length-1 {
+                        clone.moves.step += 1;
+                    }
+                    let add = state.clones.add.clone();
+                    (add)(clone, state);
+                }),
+                reset: Rc::new(|player: &mut Player| {
+                    player.x = 0.0;
+                    player.y = 0.0;
+                    player.health = 70.0;
+                    player.data_bool = vec![true, false, false];
+                    player.data_string = vec![];
+                    player.data_num = vec![0.0, 0.0, 0.0, 0.0];
+                }),
+                active: true,
+                image: 3,
+            },
+            //overall quite weak, but there can be multiple clones of it, so it just looks weak here
+            Player {
+                damage: 0.7,
+                id: "Swarm".to_string(),
+                x: 0.0,
+                y: 0.0,
+                width: 50.0,
+                height: 60.0,
+                health: 50.0,
+                speed: 0.8,
+                jump: 35.0,
+                data_bool: vec![true, false, false],
+                data_string: vec![],
+                data_num: vec![0.0, 0.0, 0.0],
+                moves: KeySequence {sequence: vec![], step: 0, length: 0},
+                apply_inputs: Rc::new(|state: &mut Game| {
+                    if state.player.moves.sequence[state.player.moves.step as usize].a {
+                        state.player.data_num[0] -= state.player.speed;
+                    }
+                    if state.player.moves.sequence[state.player.moves.step as usize].s {
+                        state.player.data_num[1] = state.player.data_num[1].min(0.0);
+                    }
+                    if state.player.moves.sequence[state.player.moves.step as usize].d {
+                        state.player.data_num[0] += state.player.speed;
+                    }
+                    if state.player.moves.sequence[state.player.moves.step as usize].w {
+                        if state.player.data_bool[2] {
+                            state.player.data_num[1] = state.player.data_num[1].max(state.player.jump);
+                        }
+                    }
+                    if state.player.moves.sequence[state.player.moves.step as usize].special {
+                        if !state.player.data_bool[1] {
+                            state.player.data_bool[1] = true;
+                            //invert the shooting boolean
+                            state.player.data_bool[0] = !state.player.data_bool[0];
+                        }
+                    } else {
+                        state.player.data_bool[1] = false;
+                    }
+                    //shooting
+                    if state.player.data_bool[0] && state.player.data_num[2] <= 0.0 {
+                        state.player.data_num[2] = 1.0;
+                        //find all used IDs
+                        let mut used_ids = vec![];
+                        for bullet in state.player_bullets.bullets.clone() {
+                            used_ids.push(bullet.id);
+                        }
+                        //use a new ID
+                        let mut new_id = 0;
+                        while used_ids.contains(&new_id) {
+                            new_id += 1;
+                        }
+                        //add a new bullet
+                        let add = state.player_bullets.add.clone();
+                        (add)(Bullet {x: state.player.x, y: state.player.y, width: 10.0, height: 10.0, speed: 10.0, direction: 0.0, damage: state.player.damage, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, mut state: &mut Game| {
+                            let get = state.player_bullets.get.clone();
+                            let mut bullet = (get)(id, state);
+                            bullet.x += 10.0;
+                            let remove = state.player_bullets.remove.clone();
+                            (remove)(id, state);
+                            let add = state.player_bullets.add.clone();
+                            let overlap = state.platforms.platforms.iter().filter(|platform| {
+                                bullet.x + bullet.width/2.0 > platform.x - platform.width/2.0 && bullet.x - bullet.width/2.0 < platform.x + platform.width/2.0 && bullet.y + bullet.height/2.0 > platform.y - platform.height/2.0 && bullet.y - bullet.height/2.0 < platform.y + platform.height/2.0
+                            }).collect::<Vec<&Platform>>();
+                            //check for enemy collisions
+                            let mut hit_enemies = vec![];
+                            for mut enemy in state.enemies.enemies.iter_mut() {
+                                if bullet.x + bullet.width/2.0 > enemy.x - enemy.width/2.0 && bullet.x - bullet.width/2.0 < enemy.x + enemy.width/2.0 && bullet.y + bullet.height/2.0 > enemy.y - enemy.height/2.0 && bullet.y - bullet.height/2.0 < enemy.y + enemy.height/2.0 {
+                                    enemy.health -= bullet.damage;
+                                    hit_enemies.push(enemy.id);
+                                }
+                            }
+                            if overlap.len() == 0 && hit_enemies.len() == 0 {
+                                (add)(bullet, state);
+                            }
+                        }), id: new_id, image: 0}, state);
+                    }
+                    //apply air resistance
+                    state.player.data_num[0] *= 0.9;
+                    state.player.data_num[1] *= 0.9;
+                    //apply gravity
+                    state.player.data_num[1] -= 1.0;
+                    //apply bullet cooldown
+                    if state.player.data_num[2] > 0.0 {
+                        state.player.data_num[2] -= 0.05;
+                    }
+                    state.player.data_bool[2] = false;
+                    //check for platform collisions
+                    for platform in state.platforms.platforms.iter() {
+                        if (state.player.x - platform.x).abs() < platform.width/2.0 + state.player.width/2.0 && (state.player.y - platform.y).abs() < platform.height/2.0 + state.player.height/2.0 {
+                            //check which side of the platform is closest
+                            let left_overlap = (state.player.x + state.player.width/2.0) - (platform.x - platform.width/2.0);
+                            let right_overlap = (platform.x + platform.width/2.0) - (state.player.x - state.player.width/2.0);
+                            let bottom_overlap = (state.player.y + state.player.height/2.0) - (platform.y - platform.height/2.0);
+                            let top_overlap = (platform.y + platform.height/2.0) - (state.player.y - state.player.height/2.0);
+                            //find the smallest overlap
+                            let smallest_overlap = left_overlap.min(right_overlap).min(top_overlap).min(bottom_overlap);
+                            //apply the smallest overlap
+                            if smallest_overlap == left_overlap {
+                                state.player.data_num[0] = state.player.data_num[0].min(0.0);
+                                state.player.x = platform.x - platform.width/2.0 - state.player.width/2.0 + 1.0;
+                            } else if smallest_overlap == right_overlap {
+                                state.player.data_num[0] = state.player.data_num[0].max(0.0);
+                                state.player.x = platform.x + platform.width/2.0 + state.player.width/2.0 - 1.0;
+                            } else if smallest_overlap == top_overlap {
+                                state.player.data_num[1] = state.player.data_num[1].max(0.0);
+                                state.player.y = platform.y + platform.height/2.0 + state.player.height/2.0 - 1.0;
+                                state.player.data_bool[2] = true;
+                            } else if smallest_overlap == bottom_overlap {
+                                state.player.data_num[1] = state.player.data_num[1].min(0.0);
+                                state.player.y = platform.y - platform.height/2.0 - state.player.height/2.0 + 1.0;
+                            }
+                        }
+                    }
+                    //check for ground collisions
+                    if state.player.y - state.player.height/2.0 < 0.0 {
+                        state.player.data_bool[2] = true;
+                        state.player.data_num[1] = state.player.data_num[1].max(0.0);
+                        state.player.y = state.player.height/2.0 - 1.0;
+                    }
+                    //move the player
+                    state.player.x += state.player.data_num[0];
+                    state.player.y += state.player.data_num[1];
+                    //update the step
+                    if state.player.moves.step < state.player.moves.length-1 {
+                        state.player.moves.step += 1;
+                    }
+                }),
+                apply_inputs_as_clone: Rc::new(|state: &mut Game, id: String| {
+                    let get = state.clones.get.clone();
+                    let mut clone = (get)(id, state);
+                    if clone.moves.sequence[clone.moves.step as usize].a {
+                        clone.data_num[0] -= clone.speed;
+                    }
+                    if clone.moves.sequence[clone.moves.step as usize].s {
+                        clone.data_num[1] = clone.data_num[1].min(0.0);
+                    }
+                    if clone.moves.sequence[clone.moves.step as usize].d {
+                        clone.data_num[0] += clone.speed;
+                    }
+                    if clone.moves.sequence[clone.moves.step as usize].w {
+                        if clone.data_bool[2] {
+                            clone.data_num[1] = clone.data_num[1].max(clone.jump);
+                        }
+                    }
+                    if clone.moves.sequence[clone.moves.step as usize].special {
+                        if !clone.data_bool[1] {
+                            clone.data_bool[1] = true;
+                            //invert the shooting boolean
+                            clone.data_bool[0] = !clone.data_bool[0];
+                        }
+                    } else {
+                        clone.data_bool[1] = false;
+                    }
+                    //shooting
+                    if clone.data_bool[0] && clone.data_num[2] <= 0.0 {
+                        clone.data_num[2] = 1.8;
+                        //find all used IDs
+                        let mut used_ids = vec![];
+                        for bullet in state.player_bullets.bullets.clone() {
+                            used_ids.push(bullet.id);
+                        }
+                        //use a new ID
+                        let mut new_id = 0;
+                        while used_ids.contains(&new_id) {
+                            new_id += 1;
+                        }
+                        //add a new bullet
+                        let add = state.player_bullets.add.clone();
+                        (add)(Bullet {x: clone.x, y: clone.y, width: 10.0, height: 10.0, speed: 10.0, direction: 0.0, damage: clone.damage, data_bool: vec![], data_string: vec![], data_num: vec![], update: Rc::new(|id: u32, mut state: &mut Game| {
+                            let get = state.player_bullets.get.clone();
+                            let mut bullet = (get)(id, state);
+                            bullet.x += 10.0;
+                            let remove = state.player_bullets.remove.clone();
+                            (remove)(id, state);
+                            let add = state.player_bullets.add.clone();
+                            let overlap = state.platforms.platforms.iter().filter(|platform| {
+                                bullet.x + bullet.width/2.0 > platform.x - platform.width/2.0 && bullet.x - bullet.width/2.0 < platform.x + platform.width/2.0 && bullet.y + bullet.height/2.0 > platform.y - platform.height/2.0 && bullet.y - bullet.height/2.0 < platform.y + platform.height/2.0
+                            }).collect::<Vec<&Platform>>();
+                            //check for enemy collisions
+                            let mut hit_enemies = vec![];
+                            for mut enemy in state.enemies.enemies.iter_mut() {
+                                if bullet.x + bullet.width/2.0 > enemy.x - enemy.width/2.0 && bullet.x - bullet.width/2.0 < enemy.x + enemy.width/2.0 && bullet.y + bullet.height/2.0 > enemy.y - enemy.height/2.0 && bullet.y - bullet.height/2.0 < enemy.y + enemy.height/2.0 {
+                                    enemy.health -= bullet.damage;
+                                    hit_enemies.push(enemy.id);
+                                }
+                            }
+                            if overlap.len() == 0 && hit_enemies.len() == 0 {
+                                (add)(bullet, state);
+                            }
+                        }), id: new_id, image: 0}, state);
+                    }
+                    //apply air resistance
+                    clone.data_num[0] *= 0.9;
+                    clone.data_num[1] *= 0.9;
+                    //apply gravity
+                    clone.data_num[1] -= 1.0;
+                    //apply bullet cooldown
+                    if clone.data_num[2] > 0.0 {
+                        clone.data_num[2] -= 0.05;
+                    }
+                    clone.data_bool[2] = false;
+                    //check for platform collisions
+                    for platform in state.platforms.platforms.iter() {
+                        if (clone.x - platform.x).abs() < platform.width/2.0 + clone.width/2.0 && (clone.y - platform.y).abs() < platform.height/2.0 + clone.height/2.0 {
+                            //check which side of the platform is closest
+                            let left_overlap = (clone.x + clone.width/2.0) - (platform.x - platform.width/2.0);
+                            let right_overlap = (platform.x + platform.width/2.0) - (clone.x - clone.width/2.0);
+                            let bottom_overlap = (clone.y + clone.height/2.0) - (platform.y - platform.height/2.0);
+                            let top_overlap = (platform.y + platform.height/2.0) - (clone.y - clone.height/2.0);
+                            //find the smallest overlap
+                            let smallest_overlap = left_overlap.min(right_overlap).min(top_overlap).min(bottom_overlap);
+                            //apply the smallest overlap
+                            if smallest_overlap == left_overlap {
+                                clone.data_num[0] = clone.data_num[0].min(0.0);
+                                clone.x = platform.x - platform.width/2.0 - clone.width/2.0 + 1.0;
+                            } else if smallest_overlap == right_overlap {
+                                clone.data_num[0] = clone.data_num[0].max(0.0);
+                                clone.x = platform.x + platform.width/2.0 + clone.width/2.0 - 1.0;
+                            } else if smallest_overlap == top_overlap {
+                                clone.data_num[1] = clone.data_num[1].max(0.0);
+                                clone.y = platform.y + platform.height/2.0 + clone.height/2.0 - 1.0;
+                                clone.data_bool[2] = true;
+                            } else if smallest_overlap == bottom_overlap {
+                                clone.data_num[1] = clone.data_num[1].min(0.0);
+                                clone.y = platform.y - platform.height/2.0 - clone.height/2.0 + 1.0;
+                            }
+                        }
+                    }
+                    //check for ground collisions
+                    if clone.y - clone.height/2.0 < 0.0 {
+                        clone.data_bool[2] = true;
+                        clone.data_num[1] = clone.data_num[1].max(0.0);
+                        clone.y = clone.height/2.0 - 1.0;
+                    }
+                    //move the player
+                    clone.x += clone.data_num[0];
+                    clone.y += clone.data_num[1];
+                    //update the step
+                    if clone.moves.step < clone.moves.length-1 {
+                        clone.moves.step += 1;
+                    }
+                    let add = state.clones.add.clone();
+                    (add)(clone, state);
+                }),
+                reset: Rc::new(|player: &mut Player| {
+                    player.x = 0.0;
+                    player.y = 0.0;
+                    player.health = 50.0;
+                    player.data_bool = vec![true, false, false];
+                    player.data_string = vec![];
+                    player.data_num = vec![0.0, 0.0, 0.0];
+                }),
+                active: true,
+                image: 4,
+            }
         ],
         keep_old: false,
     };
@@ -1853,8 +2416,9 @@ fn main() {
 
     let mut key_sequence = KeySequence {sequence: vec![], step: 0, length: 0};
 
-
-    //get the background image
+    
+    //load images
+        //get the background image
         let background = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/background2.jpeg",
@@ -1864,7 +2428,7 @@ fn main() {
 
 
 
-    //make a list of the platform images
+        //make a list of the platform images
         let platform1 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/platform1.png",
@@ -1890,7 +2454,7 @@ fn main() {
 
 
 
-    //make a list of the player images
+        //make a list of the player images
         let player1 = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/player1.png",
@@ -1937,7 +2501,7 @@ fn main() {
 
 
 
-    //make a list of the enemy images
+        //make a list of the enemy images
         let enemy = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/enemy.png",
@@ -1949,7 +2513,7 @@ fn main() {
 
 
 
-    //make a list of the bullet images
+        //make a list of the bullet images
         let bullet = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/bullet.png",
@@ -1961,7 +2525,7 @@ fn main() {
 
 
 
-    //get the menu image
+        //get the menu image
         let menu_image = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/menu.png",
@@ -1971,14 +2535,14 @@ fn main() {
 
 
 
-    //get the mouse image
+        //get the mouse image
         let mouse = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/cursor.png",
         Flip::None,
         &TextureSettings::new(),
         ).expect("mouse image failed to load");
-    //get the button images
+        //get the button images
         let button_back = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/buttons/buttons/back.png",
@@ -2079,7 +2643,7 @@ fn main() {
 
         let buttons = vec![button_back, button_loop, button_play_1, button_play_2, button_play_3, button_play_4, button_play_5, button_play_6, button_play_7, button_slack, button_slider, button_switch_1, button_switch_2, button_upgrade];
 
-    //get the button text images
+        //get the button text images
         let button_text_batte = Texture::from_path(
         &mut window.create_texture_context(),
         "assets/images/buttons/text/batte.png",
@@ -2338,6 +2902,15 @@ fn main() {
                         let y_offset = button_size;
                         image(&button_texts[button.text_image as usize], c.transform.scale(width/(image_size.0 as f64), height/(image_size.1 as f64)).trans((button.x - width/2.0)/width*(image_size.0 as f64), (900.0 - (button.y + button.height/2.0) + y_offset)/height*(image_size.1 as f64)), g);
                     }
+                }
+
+                //if on the vehicle select screen, draw the selected vehicle
+                if menu.screen == 3 {
+                    let player_image = &player_images[menu.vehicles[menu.selected_vehicle as usize].image as usize];
+                    let player_width = menu.vehicles[menu.selected_vehicle as usize].width;
+                    let player_height = menu.vehicles[menu.selected_vehicle as usize].height;
+                    let image_size = player_image.get_size();
+                    image(player_image, c.transform.scale(player_width/(image_size.0 as f64), player_height/(image_size.1 as f64)).trans((720.0 - player_width/2.0)/player_width*(image_size.0 as f64), (450.0 - player_height/2.0)/player_height*(image_size.1 as f64)), g);
                 }
             }
             //draw the mouse

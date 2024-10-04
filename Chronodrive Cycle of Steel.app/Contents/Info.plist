@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- The name of your compiled Rust executable (case-sensitive). This must match exactly. -->
+    <key>CFBundleExecutable</key>
+    <string>ChronodriveCycleOfSteel</string> <!-- Example: your compiled Rust executable's name -->
+    
+    <!-- A reverse-DNS string to uniquely identify your app. You can use your own domain or any string. -->
+    <key>CFBundleIdentifier</key>
+    <string>com.chronodrive.simon</string> <!-- Example: change "example" and "myapp" to something unique -->
+
+    <!-- The display name of your app. This can be whatever you want the app to show as its name. -->
+    <key>CFBundleName</key>
+    <string>Chronodrive</string> <!-- Example: change "MyApp" to your app's display name -->
+
+    <!-- The version number of your app. You can use a format like "1.0", "1.0.1", etc. -->
+    <key>CFBundleVersion</key>
+    <string>1.0</string> <!-- Example: change "1.0" to your app’s current version -->
+
+    <!-- Declares this as a standard macOS application bundle. "APPL" is the required type. -->
+    <key>CFBundlePackageType</key>
+    <string>APPL</string> <!-- Required: don't change this -->
+
+</dict>
+</plist>
