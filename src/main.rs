@@ -787,6 +787,11 @@ fn update_menu(mut menu: &mut Menu, mut state: &mut Game) {
         //otherwise, keep the player the same, but apply upgrades to all vehicles in the menu
         if !menu.keep_old {
             state.player = menu.vehicles[menu.selected_vehicle as usize].clone();
+            //if the player is the swarm vehicle, set id to data_num[3] and increment data_num[3] for the menu car
+            if state.player.id == "Swarm".to_string() {
+                state.player.id = state.player.data_num[3].to_string();
+                menu.vehicles[menu.selected_vehicle as usize].data_num[3] += 1.0;
+            }
         } else {
             for vehicle in menu.vehicles.iter_mut() {
                 vehicle.health += menu.health_modifier as f64;
@@ -2382,10 +2387,14 @@ fn main() {
             Player {
                 damage: 0.7,
 <<<<<<< HEAD
+<<<<<<< HEAD
                 id: "Swarm".to_string(),
 =======
                 id: 1.to_string(),
 >>>>>>> 0bbb193309acffbfaebdc1ab3ddabe085f9e14c0
+=======
+                id: "Swarm".to_string(),
+>>>>>>> aee92832657bf1e2267e9e48ba9d17fc744522d7
                 x: 0.0,
                 y: 0.0,
                 width: 50.0,
@@ -2395,7 +2404,7 @@ fn main() {
                 jump: 35.0,
                 data_bool: vec![true, false, false],
                 data_string: vec![],
-                data_num: vec![0.0, 0.0, 0.0],
+                data_num: vec![0.0, 0.0, 0.0, 1.0],
                 moves: KeySequence {sequence: vec![], step: 0, length: 0},
                 apply_inputs: Rc::new(|state: &mut Game| {
                     if state.player.moves.sequence[state.player.moves.step as usize].a {
